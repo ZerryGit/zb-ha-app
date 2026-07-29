@@ -182,11 +182,13 @@ The builder persists named widgets (each a document with a `primary` payload and
 |---------------|---------|
 | `GET ../api/widgets` | List widget metadata (`id`, `name`, `updatedAt`, …). |
 | `GET ../api/widgets/new-id` | Returns `{ "id": "<fresh-id>" }` for a new widget. |
-| `GET ../api/widgets/:id` | Read one widget. `404` `{ error, code: "NOT_FOUND" }` if absent. |
+| `GET ../api/widgets/:id` | Read one widget: `{ id, name, doc, metadata?, fullscreen?, updatedAt, schemaVersion }`. `404` `{ error, code: "NOT_FOUND" }` if absent. |
 | `PUT ../api/widgets/:id` | Create/replace a widget. Body: `{ name, doc, metadata?, fullscreen? }`. Omitting `fullscreen` leaves any existing companion unchanged; `null` removes it. Returns `{ ok, id, name, updatedAt }`; `400` on schema violation. |
 | `DELETE ../api/widgets/:id` | Delete a widget. |
 
 > **Source secrets** are stored and returned in clear text over `GET ../api/widgets/:id`, exactly as for `GET ../payload` (see that note above).
+
+> **`schemaVersion`** is the stored-envelope format version (currently `1`), owned by the server: it is stamped on every save and returned on read, so `PUT` bodies neither send nor need it. A record saved before envelope versioning existed has no field on disk and reads back as the current version — the file itself is not rewritten. Clients should ignore the field unless they persist widget records themselves.
 
 ---
 
