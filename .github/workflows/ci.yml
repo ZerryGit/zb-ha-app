@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            zb_engine/package-lock.json
+            zb_engine/builder/package-lock.json
+
+      # ── Server + shared @zb/expressions ──────────────────────────
+      - name: server install
+        working-directory: zb_engine
+        run: npm ci
+      - name: server build (compiles + typechecks src)
+        working-directory: zb_engine
+        run: npm run build
+      - name: server tests (includes the widget backward-compat guardrail)
+        working-directory: zb_engine
+        run: npm test
+
+      # ── Builder SPA ──────────────────────────────────────────────
+      - name: builder install
+        working-directory: zb_engine/builder
+        run: npm ci
+      - name: builder tests
+        working-directory: zb_engine/builder
+        run: npm test
+      - name: builder build
+        working-directory: zb_engine/builder
+        run: npm run build
