@@ -59,6 +59,11 @@ export function assertValidDeviceId(id: string): asserts id is DeviceId {
 export interface WidgetDoc {
   id: string;
   name: string;
+  /**
+   * Stored-envelope format version. Absent means `0` — the pre-versioning
+   * baseline. Stamped on save, migrated on load; see `core/widgetMigrations.ts`.
+   */
+  schemaVersion?: number;
   doc: unknown;
   /** Optional non-renderer widget metadata. Never consumed by the draw engine. */
   metadata?: unknown;

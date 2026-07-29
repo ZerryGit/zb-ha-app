@@ -11,6 +11,7 @@ import { fullscreenPayloadSchema, payloadSchema } from "../schema/payloadSchema"
 import { HttpError } from "../errors/httpError";
 import { AsyncMutex } from "./asyncMutex";
 import { restoreWidgetSecrets } from "./sourceSecrets";
+import { CURRENT_SCHEMA_VERSION, migrateWidgetDoc } from "./widgetMigrations";
 import { MAX_WIDGET_COUNT, MAX_WIDGETS_TOTAL_BYTES } from "../limits";
 
 /** Regex for valid widget IDs: alphanumeric, underscore, hyphen only. */
@@ -73,13 +74,19 @@ export function generateWidgetId(): string {
 
 /**
  * Read a single widget by ID. Validates the ID before accessing storage.
+ *
+ * The stored envelope is brought up to `CURRENT_SCHEMA_VERSION` in memory
+ * (`migrateWidgetDoc`) — a document saved before envelope versioning existed
+ * reads back as version-current. Nothing is written back: the file on disk is
+ * left exactly as it was until the user saves.
  */
 export async function readWidget(
   storage: StorageAdapter,
   id: string,
 ): Promise<WidgetDoc | null> {
   validateWidgetId(id);
-  return storage.readWidget(id);
+  const widget = await storage.readWidget(id);
+  return widget ? migrateWidgetDoc(widget) : null;
 }
 
 /**
@@ -120,6 +127,12 @@ export async function writeWidget(
     // Persist the Zod-cleaned shape, not the raw input — strips unknown keys.
     widget = { ...widget, fullscreen: parsed.data };
   }
+
+  // Stamp the stored-envelope format version. This is the single choke point
+  // for widget writes, so every persisted record carries it — routes and
+  // storage adapters never stamp it themselves. Done before the quota check so
+  // the byte projection matches what actually lands on disk.
+  widget = { ...widget, schemaVersion: CURRENT_SCHEMA_VERSION };
 
   // Detect "companion removed" before we overwrite the on-disk record.
   const explicitlyCleared = Object.prototype.hasOwnProperty.call(widget, "fullscreen") && widget.fullscreen == null;
