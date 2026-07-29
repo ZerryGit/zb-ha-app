@@ -12,9 +12,16 @@ import { fullscreenIdFor, isFullscreenId, primaryIdOf } from './companionId.js';
 
 const HISTORY_LIMIT = 100;
 
-// Max sources per widget. Mirrors the payload schema's cap (payloadSchema.ts)
-// so the shared pool can never grow past what either slot's export accepts.
-const MAX_SOURCES = 50;
+// Max sources per widget. Mirrors MAX_SOURCES in the server's `src/limits.ts`
+// (surfaced through payloadSchema.ts) so the shared pool can never grow past
+// what either slot's export accepts. The two install trees share no code —
+// change both together.
+export const MAX_SOURCES = 500;
+
+// Above this many sources the builder warns the user once per widget that
+// fetching this many on low-power hardware can slow saves and refreshes. It is
+// advisory only — adding past it is allowed, all the way to MAX_SOURCES.
+export const SOURCE_WARN_THRESHOLD = 50;
 
 // ── Fallback constants (stable references for unfocused state) ───────
 // Module-level singletons so Zustand's === equality check returns the
@@ -358,11 +365,12 @@ export const useDocStore = create(
         const merged = mergeInheritedSources(primaryPlain, ownPlain);
 
         if (merged.length > MAX_SOURCES) {
-          // Legacy widgets could store up to 50 sources on EACH blob independently,
-          // so the fold may exceed the per-payload cap. Folding anyway would dirty
-          // the primary, auto-save, and 400 on every save while the companion's
-          // own sources are already gone from memory. Leave the widget in its
-          // valid legacy shape (each blob ≤ 50) and surface the problem instead.
+          // Legacy widgets could store a full cap's worth of sources on EACH blob
+          // independently, so the fold may exceed the per-payload cap. Folding
+          // anyway would dirty the primary, auto-save, and 400 on every save while
+          // the companion's own sources are already gone from memory. Leave the
+          // widget in its valid legacy shape (each blob within the cap) and
+          // surface the problem instead.
           console.error(
             `[docStore] Widget "${primaryId}" would have ${merged.length} sources after merging its `
             + `fullscreen companion (cap ${MAX_SOURCES}). Skipping consolidation — reduce sources to unify.`,
@@ -863,7 +871,7 @@ export const useDocStore = create(
         const entry = getPrimaryEntryFor(state);
         if (!entry) return;
         if (entry.doc.sources.length >= MAX_SOURCES) {
-          // Refuse rather than build a pool the export schema (max 50) rejects.
+          // Refuse rather than build a pool the export schema rejects.
           // Surfaced via console so it is not a silent no-op.
           console.warn(`[docStore] Source pool is at the ${MAX_SOURCES}-source limit; not adding.`);
           return;

@@ -36,6 +36,13 @@ export const useUiStore = create(
     // Shape: { [sourceId]: { receivedAt: string, responseType: string, data: any } }
     sourceResponsesById: {},
 
+    // Widgets that have already seen the "that's a lot of data sources" notice
+    // this session, keyed by PRIMARY doc ID (the shared source pool's home) so a
+    // companion doesn't get its own entry. Shape: { [primaryDocId]: true }.
+    // Editor-only and flat per Engineering constraint §10 — never serialized
+    // into a payload (§8).
+    sourceWarnAcknowledged: {},
+
     // Transient queue depth for the source-test throttler (Task 6).
     // Sum of pending + in-flight source tests. Surfaced here so a future
     // status pill can read it; never persisted into the document payload.
@@ -249,6 +256,14 @@ export const useUiStore = create(
       set((state) => {
         if (!sourceId) return;
         delete state.sourceResponsesById[sourceId];
+      });
+    },
+
+    /** Mark a widget as having seen the many-sources notice (by primary doc ID). */
+    acknowledgeSourceWarn(primaryDocId) {
+      set((state) => {
+        if (!primaryDocId) return;
+        state.sourceWarnAcknowledged[primaryDocId] = true;
       });
     },
 

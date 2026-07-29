@@ -51,6 +51,8 @@ import {
   getFocusedDoc,
   getDocById,
   PENDING_DOC_ID,
+  MAX_SOURCES,
+  SOURCE_WARN_THRESHOLD,
 } from '../docStore.js';
 
 import { getDisplayConfig } from '../displayConfigStore.js';
@@ -713,6 +715,32 @@ describe('docStore', () => {
       expect(selectSharedSources(state()).map((s) => s.id)).toEqual(['added']);
     });
 
+    it('addSource keeps going past the warn threshold and stops at MAX_SOURCES', () => {
+      expect(SOURCE_WARN_THRESHOLD).toBeLessThan(MAX_SOURCES);
+      openWidget('w1');
+      state().switchFocus('w1');
+
+      // The threshold is advisory (the warning lives in SourcesPanel) — the
+      // store itself must not refuse an add until the hard cap.
+      for (let i = 0; i < SOURCE_WARN_THRESHOLD + 1; i++) {
+        state().addSource({ id: `s${i}`, kind: 'http' });
+      }
+      expect(getDocById('w1').sources).toHaveLength(SOURCE_WARN_THRESHOLD + 1);
+
+      for (let i = SOURCE_WARN_THRESHOLD + 1; i < MAX_SOURCES; i++) {
+        state().addSource({ id: `s${i}`, kind: 'http' });
+      }
+      expect(getDocById('w1').sources).toHaveLength(MAX_SOURCES);
+
+      // At the cap the add is refused, not silently truncated elsewhere.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      state().addSource({ id: 'over-cap', kind: 'http' });
+      expect(getDocById('w1').sources).toHaveLength(MAX_SOURCES);
+      expect(getDocById('w1').sources.some((s) => s.id === 'over-cap')).toBe(false);
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
     it('updateSource from the companion edits the shared pool', () => {
       openPair([{ id: 'temp', kind: 'haState', entity_id: 'sensor.a' }]);
       state().switchFocus(CID);
@@ -736,15 +764,6 @@ describe('docStore', () => {
       expect(selectHasUnsavedChanges(state())).toBe(true);
     });
 
-    it('refuses to add beyond the 50-source cap', () => {
-      openWidget('w1');
-      state().switchFocus('w1');
-      for (let i = 0; i < 50; i += 1) state().addSource({ id: `s${i}`, kind: 'http' });
-      expect(getDocById('w1').sources).toHaveLength(50);
-      state().addSource({ id: 's50', kind: 'http' });
-      expect(getDocById('w1').sources).toHaveLength(50);
-    });
-
     it('replaceDocFromJson on a companion routes its sources to the primary pool', () => {
       openPair([{ id: 'temp', kind: 'haState' }]);
       state().switchFocus(CID);
@@ -760,10 +779,10 @@ describe('docStore', () => {
       expect(getDocById(CID).elements.map((e) => e.id)).toEqual(['c-el']);
     });
 
-    it('rejects a JSON edit that would push the shared pool past the 50-source cap', () => {
+    it('rejects a JSON edit that would push the shared pool past the cap', () => {
       openPair([{ id: 'temp', kind: 'haState' }]);
       state().switchFocus(CID);
-      const tooMany = Array.from({ length: 51 }, (_, i) => ({ id: `s${i}`, kind: 'http' }));
+      const tooMany = Array.from({ length: MAX_SOURCES + 1 }, (_, i) => ({ id: `s${i}`, kind: 'http' }));
       state().replaceDocFromJson({ misc: { gridSize: '3x2' }, elements: [], sources: tooMany });
       // Edit not applied: pool unchanged, companion own still empty.
       expect(getDocById('w1').sources.map((s) => s.id)).toEqual(['temp']);
@@ -836,14 +855,19 @@ describe('docStore', () => {
     });
 
     it('skips the fold (leaving both blobs valid, primary not dirtied) when the pool would exceed the cap', () => {
-      const primarySources = Array.from({ length: 40 }, (_, i) => ({ id: `p${i}`, kind: 'http' }));
-      const companionSources = Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, kind: 'http' }));
+      // Each blob is individually within the cap, but the two together are not —
+      // the legacy shape a fold has to leave alone.
+      const primaryCount = MAX_SOURCES - 10;
+      const companionCount = 20;
+      const primarySources = Array.from({ length: primaryCount }, (_, i) => ({ id: `p${i}`, kind: 'http' }));
+      const companionSources = Array.from({ length: companionCount }, (_, i) => ({ id: `c${i}`, kind: 'http' }));
       openWidget('w1', { sources: primarySources });
       openWidget(CID, { misc: { gridSize: '3x2' }, sources: companionSources });
       state().mergeCompanionSourcesIntoPrimary('w1');
-      // 40 + 20 = 60 > 50 → no mutation, widget stays in its valid legacy shape.
-      expect(getDocById('w1').sources).toHaveLength(40);
-      expect(getDocById(CID).sources).toHaveLength(20);
+      // Sum exceeds the cap → no mutation, widget stays in its valid legacy shape.
+      expect(primaryCount + companionCount).toBeGreaterThan(MAX_SOURCES);
+      expect(getDocById('w1').sources).toHaveLength(primaryCount);
+      expect(getDocById(CID).sources).toHaveLength(companionCount);
       expect(state().docs['w1'].dirty).toBe(false);
     });
   });
