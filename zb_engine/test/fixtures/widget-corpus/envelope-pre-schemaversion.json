@@ -1,0 +1,15 @@
+{
+  "id": "widget_pre00001_ver000",
+  "name": "Pre-schemaVersion envelope",
+  "doc": {
+    "misc": { "size": { "width": 200, "height": 100 }, "format": "png", "gridSize": "1x1", "name": "envelope-pre-schemaversion" },
+    "features": {},
+    "sources": [],
+    "elements": [
+      { "type": "rect", "id": "r1", "pos": { "x": 16, "y": 14 }, "sizeX": 96, "sizeY": 34, "enableFill": true, "fill": 100, "enableStroke": true, "strokeWidth": 3 },
+      { "type": "circle", "id": "c1", "pos": { "x": 136, "y": 22 }, "sizeX": 40, "sizeY": 40, "enableStroke": true, "strokeWidth": 2 },
+      { "type": "line", "id": "l1", "pos": { "x": 0, "y": 0 }, "points": [[16, 78], [184, 78]], "enableStroke": true, "strokeWidth": 4 }
+    ]
+  },
+  "updatedAt": 1700000000000
+}
