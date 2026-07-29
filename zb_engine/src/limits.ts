@@ -54,6 +54,13 @@ export const MAX_ELEMENT_NESTING_DEPTH = 32;
  */
 export const MAX_TOTAL_ELEMENTS = 10_000;
 
+/**
+ * Maximum `sources[]` entries in one payload. Mirrored in the builder as
+ * `MAX_SOURCES` in `builder/src/store/docStore.js` (the two install trees
+ * don't share code — keep them in sync).
+ */
+export const MAX_SOURCES = 500;
+
 // ── Render pipeline ────────────────────────────────────────────
 
 /** Abort a render if it exceeds this duration (ms). */

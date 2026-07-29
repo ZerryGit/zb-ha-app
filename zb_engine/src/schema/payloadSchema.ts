@@ -9,7 +9,7 @@ import { z } from "zod";
 import { sourceSchema } from "./sourceSchema";
 import { elementSchema } from "./elementSchema";
 import { RESERVED_CONTEXT_ROOTS, BLOCKED_KEYS } from "@zb/expressions";
-import { MAX_ELEMENT_NESTING_DEPTH, MAX_TOTAL_ELEMENTS } from "../limits";
+import { MAX_ELEMENT_NESTING_DEPTH, MAX_TOTAL_ELEMENTS, MAX_SOURCES } from "../limits";
 
 const MAX_CANVAS_DIM = 4096;
 const MAX_TOP_LEVEL_ELEMENTS = 2000;
@@ -116,7 +116,7 @@ export const payloadSchema = z.object({
           { message: "Feature keys must not include __proto__, constructor, or prototype." },
         ),
     ),
-  sources: z.array(sourceSchema).max(50).default([])
+  sources: z.array(sourceSchema).max(MAX_SOURCES).default([])
     .refine(
       (sources) => {
         const ids = sources.map((s) => s.id);

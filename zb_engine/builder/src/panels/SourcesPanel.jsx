@@ -4,8 +4,12 @@ import {
   selectSharedSources,
   selectFocusedElements,
   selectFocusedMisc,
+  selectFocusedDocId,
+  SOURCE_WARN_THRESHOLD,
 } from '../store/docStore.js';
+import { primaryIdOf } from '../store/companionId.js';
 import { useUiStore } from '../store/uiStore.js';
+import { useNoticeStore } from '../store/noticeStore.js';
 import { normalizeSourceForExport } from '../models/mapper.js';
 import { createId } from '../utils/ids.js';
 import {
@@ -20,6 +24,19 @@ import {
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { normalizeResponseData } from '../utils/responseData.js';
 
+// Shown once per widget when its source pool grows past SOURCE_WARN_THRESHOLD.
+// Advisory only — the add still goes through, and the user can keep going up to
+// the hard cap.
+const MANY_SOURCES_NOTICE = {
+  title: "That's a lot of data sources.",
+  message:
+    'This widget now has more than 50 data sources. On low-power hardware like a '
+    + 'Raspberry Pi, fetching and refreshing this many sources can slow down saves '
+    + 'and cause stuttering or delayed screen updates. You can keep adding sources '
+    + '(up to 500) — just know performance may suffer.',
+  buttonLabel: 'Got it',
+};
+
 export default function SourcesPanel() {
   // Primary and companion share ONE source pool, so this list is identical and
   // fully editable on both screens — no more read-only "inherited" rows.
@@ -31,6 +48,7 @@ export default function SourcesPanel() {
   const updateElement = useDocStore((s) => s.updateElement);
   const elements = useDocStore(selectFocusedElements);
   const size = useDocStore((s) => selectFocusedMisc(s).size);
+  const focusedDocId = useDocStore(selectFocusedDocId);
 
   const setSelectedSourceId = useUiStore((s) => s.setSelectedSourceId);
   const setSourceResponse = useUiStore((s) => s.setSourceResponse);
@@ -86,7 +104,21 @@ export default function SourcesPanel() {
 
   // ── Add source by type ──
 
+  // Warn once per widget when an add would push the pool past the threshold.
+  // Keyed by PRIMARY doc ID, since a widget and its fullscreen companion share
+  // one pool and should share one warning. Never blocks the add.
+  const warnIfManySources = () => {
+    if (sources.length + 1 <= SOURCE_WARN_THRESHOLD) return;
+    const primaryId = primaryIdOf(focusedDocId);
+    if (!primaryId) return;
+    const ui = useUiStore.getState();
+    if (ui.sourceWarnAcknowledged[primaryId]) return;
+    ui.acknowledgeSourceWarn(primaryId);
+    useNoticeStore.getState().showNotice(MANY_SOURCES_NOTICE);
+  };
+
   const handleAddHttp = () => {
+    warnIfManySources();
     const id = createId();
     addSource({
       id,
@@ -109,6 +141,7 @@ export default function SourcesPanel() {
   };
 
   const handleAddHaState = () => {
+    warnIfManySources();
     const id = createId();
     addSource({
       id,
@@ -123,6 +156,7 @@ export default function SourcesPanel() {
   };
 
   const handleAddHaHistory = () => {
+    warnIfManySources();
     const id = createId();
     addSource({
       id,

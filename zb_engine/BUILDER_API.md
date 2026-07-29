@@ -284,7 +284,7 @@ The payload is a JSON object with four top-level keys. Maximum size: **2 MB**.
 {
   misc:     MiscConfig,
   features: Record<string, string | number | boolean>,
-  sources:  SourceDef[],    // max 50
+  sources:  SourceDef[],    // max 500
   elements: ElementDef[],   // max 2000 top-level (10,000 total incl. nested)
 }
 ```
@@ -319,7 +319,7 @@ The payload is a JSON object with four top-level keys. Maximum size: **2 MB**.
 
 ### `sources` — Data fetch instructions
 
-Max **50** sources per payload. Three kinds are supported:
+Max **500** sources per payload. Three kinds are supported:
 
 #### `http` source — Public HTTP API
 
@@ -527,7 +527,7 @@ async function deployPayload(payload) {
 | SSRF via source URLs | RFC1918 + internal hostname blocklist always enforced; cannot be disabled |
 | SSRF via img/svg elements | Same RFC1918 blocklist applied to all URL-fetching element types |
 | HA entity data leaking | Entities only served on port 8099 (HA session-authenticated); never on port 8000 |
-| Oversized payloads | 2 MB body limit; max 50 sources, 2000 top-level / 10,000 total elements, canvas **4096×4096** |
+| Oversized payloads | 2 MB body limit; max 500 sources, 2000 top-level / 10,000 total elements, canvas **4096×4096** |
 | Runaway render | 30-second pipeline timeout; 10-second per-source timeout |
 | Export token abuse | 128-bit cryptographically random token; single-use; 5-minute TTL; max 20 concurrent |
 

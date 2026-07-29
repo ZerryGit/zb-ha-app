@@ -8,6 +8,7 @@ import WelcomeScreen from './platform/WelcomeScreen.jsx';
 import AssetPickerProvider from './platform/AssetPickerProvider.jsx';
 import GridSizeSelector from './components/GridSizeSelector.jsx';
 import SetupModeScreen from './components/SetupModeScreen.jsx';
+import NoticeModal from './components/NoticeModal.jsx';
 import { testSource, renderPreview, getPreviewImageUrl, expandPayload, loadBitmapFonts, fetchHostIp, pushDeviceConfig } from './platform/apiClient.js';
 import { useEntityStore } from './platform/entityStore.js';
 import HaStateSourceFields from './platform/HaStateSourceFields.jsx';
@@ -396,6 +397,8 @@ function App() {
       )}
       {/* Platform providers — register their callbacks into uiStore on mount. */}
       <AssetPickerProvider />
+      {/* Single mount for every in-app notice; renders only when one is showing. */}
+      <NoticeModal />
     </div>
   );
 }
