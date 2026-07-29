@@ -106,6 +106,24 @@ Run `npm audit` regularly against the security-sensitive dependency surface (`ex
 
 ---
 
+## Branching & releases
+
+`origin/main` is the trunk and the source of truth. It is **branch-protected** — no direct pushes, a pull request is required (0 approvals, so a solo maintainer can self-merge), and force-pushes and branch deletion are blocked (admins included). All work lands through a PR:
+
+```bash
+git switch -c feat/my-change main    # branch off main
+# ...commit your work...
+git push origin feat/my-change       # push.default is `nothing` — always name the branch
+gh pr create --base main --fill      # open the PR
+gh pr merge --merge --delete-branch  # merge, then delete the branch
+```
+
+Keep `feat/*` and `fix/*` branches short-lived and delete them on merge.
+
+**Releases** are a single version bump in [`zb_engine/config.yaml`](zb_engine/config.yaml) plus a git tag on `main` (`v0.1.3`, `v0.1.4`, …). Avoid long-lived `release/*` branches unless a shipped version needs a backported hotfix.
+
+---
+
 ## Making Changes
 
 See the **Extension Guides** section in [ARCHITECTURE.md](zb_engine/ARCHITECTURE.md) for step-by-step instructions on common tasks:

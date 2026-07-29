@@ -1,0 +1,12 @@
+{
+  "misc": { "size": { "width": 800, "height": 480 }, "format": "png", "gridSize": "3x2", "name": "group-nested-fullscreen" },
+  "features": {},
+  "sources": [],
+  "elements": [
+    { "type": "rect", "id": "bg", "pos": { "x": 0, "y": 0 }, "sizeX": 800, "sizeY": 480, "enableStroke": true, "strokeWidth": 4 },
+    { "type": "group", "id": "g1", "pos": { "x": 40, "y": 40 }, "children": [
+      { "type": "rect", "id": "gr1", "pos": { "x": 0, "y": 0 }, "sizeX": 200, "sizeY": 120, "enableStroke": true, "strokeWidth": 2 },
+      { "type": "text", "id": "gt1", "pos": { "x": 8, "y": 8 }, "sizeX": 184, "sizeY": 30, "text": "Panel", "fontSize": 20, "fill": 100 }
+    ] }
+  ]
+}

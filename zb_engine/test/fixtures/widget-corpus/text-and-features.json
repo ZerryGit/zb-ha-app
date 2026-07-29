@@ -1,0 +1,10 @@
+{
+  "misc": { "size": { "width": 320, "height": 120 }, "format": "png", "gridSize": "1x1", "name": "text-and-features" },
+  "features": { "brightness": 80, "showFooter": true },
+  "sources": [],
+  "elements": [
+    { "type": "text", "id": "t1", "pos": { "x": 12, "y": 10 }, "sizeX": 296, "sizeY": 30, "text": "Living Room", "fontSize": 22, "fontWeight": 600, "fill": 100 },
+    { "type": "text", "id": "t2", "pos": { "x": 12, "y": 50 }, "sizeX": 296, "sizeY": 40, "text": "={{ features.brightness }}%", "fallbackText": "--", "fontSize": 32, "fill": 100 },
+    { "type": "rect", "id": "bar", "pos": { "x": 12, "y": 96 }, "sizeX": 296, "sizeY": 8, "enableFill": true, "fill": 60 }
+  ]
+}

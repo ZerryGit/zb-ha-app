@@ -1,0 +1,8 @@
+{
+  "misc": { "size": { "width": 80, "height": 80 }, "format": "png", "gridSize": "1x1", "name": "img-datauri" },
+  "features": {},
+  "sources": [],
+  "elements": [
+    { "type": "img", "id": "i1", "pos": { "x": 8, "y": 8 }, "sizeX": 64, "sizeY": 64, "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADklEQVR4nGMQQQIMxHEAYbQDwV99vVMAAAAASUVORK5CYII=", "bwMode": "threshold", "bwLevel": 50 }
+  ]
+}

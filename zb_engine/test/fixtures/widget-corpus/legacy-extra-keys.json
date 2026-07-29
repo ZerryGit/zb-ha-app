@@ -1,0 +1,9 @@
+{
+  "misc": { "size": { "width": 160, "height": 80 }, "format": "png", "gridSize": "1x1", "name": "legacy-extra-keys", "legacyMiscFlag": true },
+  "features": {},
+  "sources": [],
+  "elements": [
+    { "type": "rect", "id": "r1", "pos": { "x": 8, "y": 8 }, "sizeX": 60, "sizeY": 30, "enableFill": true, "fill": 100, "displayMode": "legacy", "unknownFutureKey": 123 },
+    { "type": "circle", "id": "c1", "pos": { "x": 100, "y": 12 }, "sizeX": 40, "sizeY": 40, "enableStroke": true }
+  ]
+}
