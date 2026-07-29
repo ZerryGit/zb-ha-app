@@ -66,15 +66,27 @@ describe("payloadSchema", () => {
     }
   });
 
-  it("rejects more than 50 sources", () => {
-    const sources = Array.from({ length: 51 }, (_, i) => ({
+  const makeSources = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
       id: `s${i}`,
       method: "GET",
       url: "https://example.com",
       response: { type: "json" },
       auth: { type: "none" },
     }));
-    const result = payloadSchema.safeParse({ ...validPayload, sources });
+
+  it("accepts 51 sources (past the builder warn threshold)", () => {
+    const result = payloadSchema.safeParse({ ...validPayload, sources: makeSources(51) });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts exactly 500 sources", () => {
+    const result = payloadSchema.safeParse({ ...validPayload, sources: makeSources(500) });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects more than 500 sources", () => {
+    const result = payloadSchema.safeParse({ ...validPayload, sources: makeSources(501) });
     expect(result.success).toBe(false);
   });
 
