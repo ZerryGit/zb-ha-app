@@ -1,0 +1,10 @@
+{
+  "misc": { "size": { "width": 320, "height": 160 }, "format": "png", "gridSize": "1x1", "name": "graph-line" },
+  "features": {},
+  "sources": [
+    { "id": "sensor1", "kind": "haHistory", "entity_id": "sensor.demo", "hoursBack": 24, "dataFields": [] }
+  ],
+  "elements": [
+    { "type": "graph", "id": "g1", "pos": { "x": 10, "y": 10 }, "sizeX": 300, "sizeY": 140, "sourceId": "sensor1", "chartType": "line", "showAxes": true, "showGrid": true, "showLabels": false, "showDateLabels": false, "showTitle": false }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "misc": { "size": { "width": 200, "height": 100 }, "format": "png", "gridSize": "1x1", "name": "shapes-primary" },
+  "features": {},
+  "sources": [],
+  "elements": [
+    { "type": "rect", "id": "r1", "pos": { "x": 12, "y": 12 }, "sizeX": 80, "sizeY": 40, "enableFill": true, "fill": 100, "enableStroke": true, "strokeWidth": 2 },
+    { "type": "circle", "id": "c1", "pos": { "x": 130, "y": 18 }, "sizeX": 48, "sizeY": 48, "enableStroke": true, "strokeWidth": 3 },
+    { "type": "line", "id": "l1", "pos": { "x": 0, "y": 0 }, "points": [[12, 86], [188, 86]], "enableStroke": true, "strokeWidth": 2 }
+  ]
+}
