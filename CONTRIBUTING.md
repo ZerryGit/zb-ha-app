@@ -114,11 +114,13 @@ Run `npm audit` regularly against the security-sensitive dependency surface (`ex
 git switch -c feat/my-change main    # branch off main
 # ...commit your work...
 git push origin feat/my-change       # push.default is `nothing` — always name the branch
-gh pr create --base main --fill      # open the PR
-gh pr merge --merge --delete-branch  # merge, then delete the branch
+gh pr create --base main --fill       # open the PR
+gh pr merge --squash --delete-branch  # squash-merge, then delete the branch
 ```
 
 Keep `feat/*` and `fix/*` branches short-lived and delete them on merge.
+
+PRs land as a **squash-merge**: one commit on `main` per PR. That keeps the trunk linear and makes each change revertable with a plain `git revert <sha>` rather than `git revert -m 1`. Commit granularity on the branch is yours to choose — it collapses on merge, so write the squash message to describe the change as a whole.
 
 **Releases** are a single version bump in [`zb_engine/config.yaml`](zb_engine/config.yaml) plus a git tag on `main` (`v0.1.3`, `v0.1.4`, …). Avoid long-lived `release/*` branches unless a shipped version needs a backported hotfix.
 
