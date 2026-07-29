@@ -158,11 +158,23 @@ re-exports its merged payload. The inline JSON editor (`replaceDocFromJson`)
 follows the same rule: editing a *companion's* JSON routes its `sources` onto the
 primary pool and leaves the companion's own array empty.
 
-**Cap.** `MAX_SOURCES = 50` mirrors the server payload schema
-(`src/schema/payloadSchema.ts`). It is enforced on `addSource`, on JSON edits, and
-on the migration fold below, so the shared pool can never grow past what either
-slot's export accepts — an over-cap pool would `400` on save. Over-cap attempts are
-refused and surfaced via `console`, never applied silently.
+**Cap.** `MAX_SOURCES = 500` mirrors the server's `MAX_SOURCES` in `src/limits.ts`
+(applied by `src/schema/payloadSchema.ts`). The two install trees share no code, so
+the constants are kept in sync by hand — change both together. The cap is enforced
+on `addSource`, on JSON edits, and on the migration fold below, so the shared pool
+can never grow past what either slot's export accepts — an over-cap pool would `400`
+on save. Over-cap attempts are refused and surfaced via `console`, never applied
+silently. Both `MAX_SOURCES` and `SOURCE_WARN_THRESHOLD` are exported from
+`docStore.js`; nothing should re-declare either number.
+
+**Warn threshold.** `SOURCE_WARN_THRESHOLD = 50` is advisory, not a limit. When an
+add would take a widget past it, `SourcesPanel` shows a one-button notice
+(`noticeStore.showNotice`) explaining that a pool this large can slow saves and
+screen refreshes on low-power hardware. The store is not involved: `addSource`
+neither checks the threshold nor blocks the add — the source is added either way.
+The "already warned" flag lives on `uiStore.sourceWarnAcknowledged`, keyed by
+PRIMARY doc ID so a widget and its companion share one warning, and is session-only
+(never serialized).
 
 **Legacy migration.** Older widgets could store independent sources on each slot.
 `mergeCompanionSourcesIntoPrimary(widgetId)` folds a companion's own sources onto
@@ -172,7 +184,7 @@ re-fold of an already-unified pool is a no-op — and dirties the primary **only
 a real change, compared with an order-independent `sourcePoolFingerprint` so a pure
 reorder or a clean load never triggers a spurious auto-save. If the fold would
 exceed `MAX_SOURCES`, it is skipped (the widget stays in its valid legacy shape,
-each slot ≤ 50) and the problem is logged.
+each slot within the cap) and the problem is logged.
 
 ### Consumer access pattern
 

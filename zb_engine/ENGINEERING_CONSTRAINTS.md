@@ -55,7 +55,7 @@ These apply everywhere unless a line says otherwise.
 1. Validate every request body with Zod before doing anything with it.
 2. Widget IDs match `/^[a-z0-9_-]+$/i`; reject `/`, `\`, `..`, and null bytes.
 3. Cap request bodies at 2MB via the Express `json()` middleware.
-4. Payload limits: `elements[]` up to 2000 top-level (10,000 counting nested), `sources[]` up to 50, `features{}` up to 1000 keys, expression recursion up to 20.
+4. Payload limits: `elements[]` up to 2000 top-level (10,000 counting nested), `sources[]` up to 500, `features{}` up to 1000 keys, expression recursion up to 20.
 
 ### Network
 

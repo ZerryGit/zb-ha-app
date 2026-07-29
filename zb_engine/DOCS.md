@@ -387,7 +387,9 @@ phase via dot-path extraction.
 - Auth types: `none`, `apiKey`, `bearer`, `basic`
 - Fields fall back to `defaultValue` if the source fails.
 - Note: source URLs must be public (RFC1918 blocked).
-- Max 50 sources per payload. Per-source timeout: 10s.
+- Max 500 sources per payload. Per-source timeout: 10s. Past 50 the builder
+  warns once that a pool this large can slow saves and refreshes on low-power
+  hardware.
 
 ### HA state sources (`kind: "haState"`)
 
