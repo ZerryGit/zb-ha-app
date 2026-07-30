@@ -1,6 +1,6 @@
 # ZerryBit Engine
 
-**Version 0.1.2 (Beta)** · Home Assistant Add-on for E-ink Displays
+**Version 0.1.3 (Beta)** · Home Assistant Add-on for E-ink Displays
 
 > ⚠️ **Beta software.** ZerryBit Engine — including the Widget Builder — is in **beta**. Expect rough edges, breaking changes between releases, and APIs/payload formats that may change without notice. Not yet recommended for unattended production use. Please [report issues](https://github.com/ZerryGit/zb-ha-app/issues) and back up any widgets you create.
 

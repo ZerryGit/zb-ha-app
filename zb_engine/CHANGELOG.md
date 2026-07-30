@@ -5,6 +5,37 @@ All notable changes to ZerryBit Engine are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.3
+
+### Added
+
+- **Up to 500 data sources per widget** (previously 50). The server payload
+  limit and the builder now agree on the higher cap, so a large dashboard can
+  pull from many more endpoints or Home Assistant entities without being split
+  across several widgets.
+- **A one-time notice when a widget passes 50 data sources.** The builder
+  explains once, per widget, that fetching and refreshing a pool this large can
+  slow down saves and cause stuttering or delayed screen updates on low-power
+  hardware like a Raspberry Pi. It is advisory only — the source is added either
+  way, and the message does not come back for that widget.
+- **`schemaVersion` on the stored widget envelope.** Saved widgets now record
+  the document format version (currently `1`), stamped at the single write
+  point, and loads route through a version-keyed migration chain. This is
+  groundwork: a future format change can migrate older documents instead of
+  breaking them. Existing widgets are unaffected — a file without the field is
+  treated as the pre-versioning baseline, and migration runs in memory only, so
+  opening an old widget never rewrites it on disk.
+
+### Known limitations
+
+- **500 sources is reachable with fast local sources, not slow remote ones.**
+  Sources resolve four at a time inside a 30-second render budget, so several
+  hundred Home Assistant entity reads fit comfortably, while a widget built on
+  external HTTP APIs averaging a few hundred milliseconds each will hit the
+  render timeout well before the cap.
+- **Reaching the 500-source cap gives no on-screen feedback.** The builder
+  refuses the add and logs to the browser console; nothing is surfaced in the UI.
+
 ## 0.1.2
 
 ### Added

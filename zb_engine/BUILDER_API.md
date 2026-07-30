@@ -1,7 +1,7 @@
 # ZerryBit Engine — Web Builder API Reference
 
 > **Audience:** Frontend/fullstack engineers building or modifying the ZerryBit widget builder.  
-> **Version:** Engine v0.1.2  
+> **Version:** Engine v0.1.3  
 > **Last updated:** 2026-07-08
 
 ---
