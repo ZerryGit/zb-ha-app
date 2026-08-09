@@ -177,9 +177,13 @@ function toRecordOrThrow<V>(
  * and re-throws as a SourceError so that the existing error-collection
  * pipeline keeps working.
  */
-async function validateSourceUrl(sourceId: string, rawUrl: string): Promise<void> {
+async function validateSourceUrl(
+  sourceId: string,
+  rawUrl: string,
+  opts?: { allowPrivateHosts?: boolean },
+): Promise<void> {
   try {
-    await validateUrlWithDns(`Source ${sourceId}`, rawUrl);
+    await validateUrlWithDns(`Source ${sourceId}`, rawUrl, opts);
   } catch (err) {
     throw new SourceError(
       sourceId,
@@ -440,7 +444,7 @@ async function fetchSingleSource(
   // Security: block private networks, enforce domain allowlist, and resolve
   // DNS to mitigate rebinding before fetching. A residual TOCTOU window
   // remains (the fetch re-resolves the hostname) — see SECURITY.md.
-  await validateSourceUrl(source.id, resolvedUrl);
+  await validateSourceUrl(source.id, resolvedUrl, { allowPrivateHosts: true });
 
   const resolvedQuery = source.query
     ? toRecordOrThrow<unknown>(resolveValue(source.query, ctx), source.id, "query")
@@ -481,7 +485,9 @@ async function fetchSingleSource(
         redirect: "manual",
       }, signal);
 
-      // Handle redirects — re-validate the target URL to prevent SSRF via redirect
+      // Handle redirects — re-validate the target URL to prevent SSRF via redirect.
+      // No allowPrivateHosts here: the allowlist expresses trust in a URL the
+      // operator authored, and a Location header is authored by whatever answered.
       if (res.status >= 300 && res.status < 400) {
         const location = res.headers.get("location");
         if (location) {

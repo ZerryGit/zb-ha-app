@@ -8,7 +8,7 @@
  */
 
 import type { Server } from "http";
-import { configureUrlValidator, configureBlockedHostnames } from "../data/urlValidator";
+import { configureUrlValidator, configureBlockedHostnames, configurePrivateHosts } from "../data/urlValidator";
 import { createIngressApp } from "../core/server";
 import { runPipeline } from "../core/renderService";
 import type { PlatformAdapter, DeviceId } from "../core/adapters";
@@ -47,6 +47,22 @@ if (options.allowed_source_domains.length === 0) {
   logInfo("security.url_validator.configured", {
     allowedSourceDomainMode: "allowlist",
     allowedSourceDomainCount: options.allowed_source_domains.length,
+  });
+}
+
+// Operator-allowlisted private hosts. Silent when empty — that is the default
+// and must not add startup noise; a dropped entry grants nothing.
+const privateHosts = configurePrivateHosts(options.allow_private_hosts);
+for (const { index, reason } of privateHosts.rejected) {
+  logWarn("security.private_hosts.dropped", { index, reason });
+}
+if (privateHosts.accepted.length > 0) {
+  // Configured-list rows, not addresses: the logger redacts every dotted quad,
+  // and these are the same rows the per-fetch "permitted" lines and the
+  // "dropped" warnings above refer to.
+  logInfo("security.private_hosts.configured", {
+    privateHostCount: privateHosts.accepted.length,
+    entries: privateHosts.acceptedIndices,
   });
 }
 
@@ -131,6 +147,7 @@ logInfo("startup.config", {
   imagePortCooldownMs: options.image_port_cooldown_ms,
   allowedSourceDomainMode: options.allowed_source_domains.length === 0 ? "all_external" : "allowlist",
   allowedSourceDomainCount: options.allowed_source_domains.length,
+  privateHostCount: privateHosts.accepted.length,
   blockedHostnameCount: haAdapter.getBlockedHostnames().length,
 });
 

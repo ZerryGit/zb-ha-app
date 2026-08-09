@@ -339,7 +339,7 @@ Max **500** sources per payload. Three kinds are supported:
 }
 ```
 
-> **SSRF protection:** Source URLs are always validated against the RFC1918 blocklist. Private IPs (`10.x`, `192.168.x`, `172.16–31.x`), localhost, and internal HA hostnames (`supervisor`, `homeassistant`) are blocked and cannot be used as source URLs.
+> **SSRF protection:** Source URLs are always validated against the RFC1918 blocklist. Private IPs (`10.x`, `192.168.x`, `172.16–31.x`), localhost, and internal HA hostnames (`supervisor`, `homeassistant`) are blocked by default. An add-on operator may exempt specific private IPv4 addresses via the `allow_private_hosts` add-on option, which ships empty — it is not configurable from the builder. Localhost, link-local, and the internal HA hostnames are never exemptable, and the exemption never applies to a redirect target or to a hostname.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
@@ -524,8 +524,8 @@ async function deployPayload(payload) {
 | Threat | Mitigation |
 |--------|------------|
 | Unauthenticated payload deploy | HA Ingress session required on port 8099 — no API token needed |
-| SSRF via source URLs | RFC1918 + internal hostname blocklist always enforced; cannot be disabled |
-| SSRF via img/svg elements | Same RFC1918 blocklist applied to all URL-fetching element types |
+| SSRF via source URLs | RFC1918 + internal hostname blocklist always enforced; not configurable from the builder — operator-only, via the `allow_private_hosts` add-on configuration option |
+| SSRF via img/svg elements | Same RFC1918 blocklist applied to all URL-fetching element types, and the same operator-only `allow_private_hosts` exemption |
 | HA entity data leaking | Entities only served on port 8099 (HA session-authenticated); never on port 8000 |
 | Oversized payloads | 2 MB body limit; max 500 sources, 2000 top-level / 10,000 total elements, canvas **4096×4096** |
 | Runaway render | 30-second pipeline timeout; 10-second per-source timeout |

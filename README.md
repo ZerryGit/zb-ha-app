@@ -111,6 +111,7 @@ Set these in the add-on's **Configuration** tab:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `allowed_source_domains` | `[]` | Optional allowlist for HTTP data source URLs. Empty = all external allowed. |
+| `allow_private_hosts` | `[]` | Addresses on your own network the add-on may load from, for both data sources and image/SVG elements. Empty = none. Write the IP address, not a hostname (`192.168.1.50`, or `192.168.1.0/24` for a subnet — `/24` is the widest allowed). See the security note below before adding a camera. |
 | `re_render_minutes` | `0` | Auto re-render interval (0 = disabled, 1–60 minutes). Fetches fresh source data and re-renders on a timer. Uses hash-before-write to avoid unnecessary SD card writes. |
 | `image_port_cooldown_ms` | `4000` | Per-slot minimum interval between unauthenticated image-port on-demand renders. |
 | `image_port_mode` | `on-demand` | `on-demand` allows bounded image-port renders; `cache-only` serves only already-rendered in-memory images. |
@@ -139,12 +140,33 @@ operators should know:
 - **Outbound fetches can reach any public host by default.** Out of the box
   (`allowed_source_domains: []`), the add-on will fetch any public URL you
   configure for data sources, images, and SVGs. Private and reserved IP ranges
-  are **always** blocked (SSRF protection, with redirect re-validation), but
-  public egress is open until you list specific hosts in
-  `allowed_source_domains` (subdomains of a listed host are also allowed). For a
-  hardened deployment, set that allowlist. Note a residual DNS-rebinding window
-  exists between hostname validation and the actual fetch; see
-  [SECURITY.md](SECURITY.md).
+  are blocked (SSRF protection, with redirect re-validation) unless you have
+  explicitly listed them in `allow_private_hosts`, but public egress is open
+  until you list specific hosts in `allowed_source_domains` (subdomains of a
+  listed host are also allowed). For a hardened deployment, set that allowlist.
+  Note a residual DNS-rebinding window exists between hostname validation and
+  the actual fetch; see [SECURITY.md](SECURITY.md).
+- **`allow_private_hosts` lets the add-on reach one address on your network.**
+  It ships empty, so nothing on your network is reachable until you add an
+  entry yourself in the add-on's Configuration tab. Add one and the add-on can
+  load from that address for both data sources and image/SVG elements — a
+  Pi-hole summary, a NAS endpoint, a camera snapshot, a locally rendered
+  Grafana panel. Three things to know before you do:
+  - **Anything an image element loads from your network is also visible,
+    without a password, to anything else on your network that can reach port
+    8000.** A widget renders to an image, and that image is what port 8000
+    serves. Pointing an image element at a camera effectively republishes that
+    camera's picture, unauthenticated, for as long as the widget exists — and
+    under `image_port_mode: on-demand` any device on your network can ask for a
+    fresh copy once per cooldown (4 seconds by default). The rendered picture is
+    1-bit and low-resolution, which degrades it but does not make it
+    unrecognizable. Prefer `image_port_mode: cache-only` if that matters to you.
+  - **Write the IP address, not a hostname.** `192.168.1.50` works;
+    `nas.local` does not, even if it points at that same address.
+  - **One address at a time, or one subnet at most.** A bare address is the
+    recommended form. `192.168.1.0/24` covers a whole subnet and is the widest
+    entry accepted. Loopback, link-local, and internal Home Assistant names
+    (`supervisor`, `homeassistant`, `hassio`, `localhost`) can never be listed.
 - **Storage is bounded.** Widgets and uploaded assets are capped (count and
   total bytes) so a misbehaving client cannot exhaust the `/data` volume.
 - **Hardening.** The add-on runs as a non-root user, drops privileges via

@@ -152,7 +152,7 @@ See the **Extension Guides** section in [ARCHITECTURE.md](zb_engine/ARCHITECTURE
 Security requirements are detailed in ENGINEERING_CONSTRAINTS.md. Key points:
 
 - All request bodies are Zod-validated at the API boundary.
-- SSRF protection validates resolved IPs, blocks all private/reserved ranges including decimal and hex representations.
+- SSRF protection validates resolved IPs, blocks private/reserved ranges including decimal and hex representations. The `allow_private_hosts` add-on option lets an operator exempt specific IPv4 literals; the exemption is opt-in per call site, never applies to redirect targets or hostnames, and can never reach loopback, link-local, or the internal HA hostnames.
 - SVG content is sanitized (no `<script>`, `<foreignObject>`, event handlers).
 - Expression evaluation has a recursion depth limit (20) and blocks prototype pollution keys.
 - Source fetches have size limits (1 MB), timeouts (10s connect, 30s total), and redirect re-validation.
