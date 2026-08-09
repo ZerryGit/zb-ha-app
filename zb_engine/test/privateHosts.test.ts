@@ -13,6 +13,7 @@ import {
   configureBlockedHostnames,
   validateUrl,
   validateUrlWithDns,
+  getUrlValidatorConfig,
 } from "../src/data/urlValidator";
 
 const ALLOW = { allowPrivateHosts: true };
@@ -189,6 +190,21 @@ describe("allow_private_hosts — rejected entry forms (D1)", () => {
     expect(result.accepted).toEqual(["192.168.1.50"]);
     expect(result.acceptedIndices).toEqual([3]);
     expect(result.rejected.map((r) => r.index)).toEqual([1]);
+  });
+
+  it("round-trips through getUrlValidatorConfig without renumbering", () => {
+    // The render worker rebuilds its allowlist from this snapshot. If the
+    // snapshot dropped the rejected rows, the worker would renumber from 1 and
+    // report the same address under a different rule than the main thread —
+    // observed on the bench as `Image source entry:1` next to `Source entry:2`.
+    configurePrivateHosts(["nonsense", "192.168.1.50"]);
+    const snapshot = getUrlValidatorConfig();
+
+    expect(snapshot.privateHosts).toEqual(["nonsense", "192.168.1.50"]);
+
+    const reconfigured = configurePrivateHosts(snapshot.privateHosts);
+    expect(reconfigured.acceptedIndices).toEqual([2]);
+    expect(reconfigured.rejected.map((r) => r.index)).toEqual([1]);
   });
 
   it("still permits the address whose row was renumbered by an earlier rejection", () => {

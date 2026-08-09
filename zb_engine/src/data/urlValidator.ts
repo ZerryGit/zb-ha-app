@@ -98,6 +98,21 @@ interface PrivateHostEntry {
 let privateHostEntries: PrivateHostEntry[] = [];
 
 /**
+ * The operator's list verbatim, kept so `getUrlValidatorConfig()` can hand the
+ * render worker the same input the main thread parsed. Snapshotting the
+ * ACCEPTED texts instead would renumber every entry in the worker, because the
+ * rejected rows would be gone — see getUrlValidatorConfig.
+ */
+let privateHostRawEntries: string[] = [];
+
+/** Every allowlist this module holds, in the form the `configure*` functions take. */
+export interface UrlValidatorConfig {
+  allowedDomains: string[];
+  privateHosts: string[];
+  blockedHostnames: string[];
+}
+
+/**
  * Outcome of the `allow_private_hosts` list, for the caller to log (D7/D8).
  *
  * A rejection carries the entry's 1-based position in the operator's list, not
@@ -167,6 +182,7 @@ export function configurePrivateHosts(entries: string[]): PrivateHostConfigResul
   }
 
   privateHostEntries = parsed;
+  privateHostRawEntries = list.map((raw) => String(raw));
   return result;
 }
 
@@ -181,6 +197,29 @@ export function configureBlockedHostnames(hostnames: string[]): void {
     ...(Array.isArray(hostnames) ? hostnames : []).map((h) => h.toLowerCase()),
   ]);
   blockedHostnames = [...merged];
+}
+
+/**
+ * Snapshot every configured allowlist, in the form the `configure*` functions
+ * accept. A `worker_thread` gets its own module registry, so the render
+ * worker's copy of this module starts empty and has to be configured from the
+ * main thread's snapshot at spawn — see renderWorker.ts.
+ *
+ * Returns copies: mutating the result must not reach the validator.
+ */
+export function getUrlValidatorConfig(): UrlValidatorConfig {
+  return {
+    allowedDomains: [...allowedDomains],
+    // The operator's list VERBATIM, rejected rows included — not the accepted
+    // texts. The worker re-parses this, and an entry's audit index is its
+    // position in the list it was parsed from: hand over the filtered list and
+    // the worker renumbers from 1, so the same address is reported as a
+    // different rule on the main thread and in the worker. Passing the raw list
+    // makes the worker's state provably identical to this one's; re-parsing the
+    // rejects is cheap and their outcome is discarded there.
+    privateHosts: [...privateHostRawEntries],
+    blockedHostnames: [...blockedHostnames],
+  };
 }
 
 function isSpecialUseIpv4Numeric(ip: number): boolean {
