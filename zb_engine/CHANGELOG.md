@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you add an entry yourself. Everything else is unchanged: with the list empty,
   private addresses are refused exactly as before.
 
+### Fixed
+
+- **The builder no longer reports "Image load failed" for an image it simply
+  cannot preview.** An image or SVG element pointing at a web address is
+  blocked by the builder page's own security policy, so it never appears on the
+  editor canvas — even though the widget renders it correctly on the device.
+  The placeholder used to say the load had failed, which sent people looking
+  for a problem that was not there. It now says the preview is unavailable in
+  the editor and points you at the rendered widget to check the result.
+  Uploaded images and inline SVGs are unaffected: they still preview normally,
+  and a genuine failure in one still reports as a failure.
+
 ### Known limitations
 
 - **Write the IP address, not a hostname.** `192.168.1.50` works; `nas.local`
