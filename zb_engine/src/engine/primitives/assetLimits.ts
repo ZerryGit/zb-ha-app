@@ -119,7 +119,9 @@ export async function fetchBufferWithLimit(
   // SSRF guard: block private/internal networks, enforce domain allowlist, and
   // resolve DNS to mitigate rebinding before fetching. A residual TOCTOU window
   // remains (the fetch re-resolves the hostname) — see SECURITY.md.
-  await validateUrlWithDns(label, url);
+  // Operator-allowlisted private hosts (allow_private_hosts). Redirect
+  // targets below stay strict — see plan 3.25 D4.
+  await validateUrlWithDns(label, url, { allowPrivateHosts: true });
 
   // SSRF guard (redirect): undici follows 3xx automatically, so a redirect
   // from an allowed public host to an internal target (e.g. 127.0.0.1,
