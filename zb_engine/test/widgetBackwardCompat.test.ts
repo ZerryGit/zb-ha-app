@@ -8,10 +8,16 @@
  *      field, a tightened type, or a removed/renamed element `type`;
  *   2. it renders with NO source errors and NO render errors — not merely "didn't
  *      throw"; a silently-dropped element would still fail here;
- *   3. for DETERMINISTIC docs (vector / text / graph — pure-JS render + encoder),
- *      the rendered PNG matches a committed golden PNG, byte-for-byte. RASTER docs
- *      (`img` / `svg` go through sharp, whose output varies by platform/version)
- *      are checked for a clean render + correct dimensions instead of a pixel golden.
+ *   3. for DETERMINISTIC docs (vector / text / graph — pure-JS render, no image
+ *      rasterization), the rendered PNG matches a committed golden PNG, byte-for-byte.
+ *      RASTER docs (`img` / `svg` rasterize through sharp, whose output varies by
+ *      platform/version) are checked for a clean render + correct dimensions instead.
+ *
+ * The PNG *encoder* is sharp as well (`src/encoder/pngEncoder.ts`), so a sharp upgrade
+ * can change the compressed bytes of a deterministic golden while every pixel stays
+ * identical — the comparison here is `Buffer.equals`, which cannot tell the two apart.
+ * Before re-baselining after a sharp bump, decode both PNGs and compare RAW PIXELS;
+ * only regenerate once the change is confirmed container-only, and say so in the PR.
  *
  * A corpus file may be a bare payload ({misc,features,sources,elements}) OR a full
  * stored widget document ({id,name,doc:{...}}) — the loader unwraps `.doc`, so a
