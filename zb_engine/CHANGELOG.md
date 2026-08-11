@@ -49,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The "allowed source domains" list now covers images and SVGs too.** If you
+  restricted the add-on to a named list of web addresses, that list was only ever
+  applied to data sources — an image or SVG element could still be fetched from
+  anywhere on the web. Both now go through the same list. Nothing changes if you
+  left the option empty, which is the default and allows every public address. If
+  you do use it, check that the addresses your image elements point at are on the
+  list: one that is not will stop appearing, and the widget renders without that
+  picture and notes it under the Preview tab. The rest of the widget is unaffected.
+
 - **Render warnings are readable again.** When an element failed to draw, the
   warning under the Preview tab printed the internal record as raw JSON —
   `{"elementIndex":1,"elementType":"img","message":"…"}` — instead of the
