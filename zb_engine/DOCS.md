@@ -460,6 +460,23 @@ Fetches state history directly from the HA Supervisor API at render time using
 - All types support: `pos`, `rotationDeg`, `scale`, `origin`, `opacity`, `visible`
 - Drawn in order — first element is the bottom layer.
 
+**Text sizing (`textFlow`)** — a text element's box follows one of two rules:
+
+- `"auto"` (the default, and every widget made before 0.1.4): the box hugs the
+  text. A longer live value grows the box sideways at render time; it never
+  shrinks.
+- `"fixed"`: you own the width. Lines wrap at `sizeX`, and `sizeY` is a
+  **minimum** height — in the builder the input is labelled "Min height". The
+  rendered box is the larger of `sizeY` and the wrapped content, so text that
+  outgrows its reserve pushes downward instead of being cut off. Setting
+  `sizeY` taller than the content reserves room, so a value that gains a line
+  later doesn't shift the layout below it.
+
+Any other `textFlow` value behaves as `"auto"`. In the builder, dragging a
+resize handle on a text element (or typing a Width/Height) switches it to
+`fixed`; the "Auto width" / "Fixed width" control in the text inspector
+switches back.
+
 ---
 
 ## 5. Bindings & Expressions
@@ -554,6 +571,15 @@ Errors are collected, not thrown. The image always renders.
 - **Cause:** Requested `fontSize` has no exact match.
 - **Fix:** Engine snaps to nearest size. Available sizes: 10, 12, 16, 20, 26, 34,
   44, 56 px. Note: 14px snaps to 12px. 12px Regular snaps to Light.
+
+**Text overlaps the element below it**
+- **Cause:** A fixed-width text frame wraps a live value taller than the
+  frame's Min height. The box grows downward rather than cutting text off, so
+  it can run into whatever sits below.
+- **Fix:** Raise the frame's Min height to reserve room for the extra lines, or
+  shorten the value with an expression. The builder marks the overrun with a
+  dashed band, but that band reflects the value being previewed — a longer live
+  value on the device can overflow further than what you saw while designing.
 
 **`image.bin` wrong size**
 - **Cause:** The `POST` reply is framed — a 25-byte header precedes the image —

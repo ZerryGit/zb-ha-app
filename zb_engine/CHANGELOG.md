@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you add an entry yourself. Everything else is unchanged: with the list empty,
   private addresses are refused exactly as before.
 
+- **Text can now wrap inside a frame you size yourself.** Until now a text box
+  always hugged its content: a longer live value stretched it sideways, ran it
+  off the screen edge, and made centred text drift out of place. Drag any
+  resize handle on a text element — or type a Width or Height — and it becomes
+  a fixed frame: the width you set is where lines wrap, so long values break
+  onto new lines instead of widening the box, and centred or right-aligned
+  text stays put. The height you set is a minimum (the input is labelled
+  "Min height"): set it taller than today's text to reserve room, and a value
+  that gains a line later fills the reserve instead of shifting everything
+  below it. Text that outgrows the reserve pushes downward — it is never cut
+  off — and the editor marks the overrun with a dashed band so you see it
+  while designing. An "Auto width" / "Fixed width" control in the text
+  inspector switches between the two behaviours; converting at the current
+  size changes nothing visually. Existing widgets are untouched: every text
+  element keeps today's hugging behaviour until you resize it yourself.
+
 ### Changed
 
 - **Remote images hosted far from the add-on no longer fail to load.** An image
@@ -70,6 +86,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A bad entry is skipped, not fatal.** An entry that is not a valid address
   is dropped with a warning in the add-on log and grants nothing; the add-on
   starts normally and the rest of the list still works.
+- **A fixed text frame grows downward and can overlap what sits below it.**
+  Text is never cut off — a value too long for its reserve pushes past the
+  frame's minimum height instead. The editor marks the overrun with a dashed
+  band whenever it happens, but the band reflects the value being previewed: a
+  longer live value on the device can overflow further than what you saw while
+  designing. Leave slack in the Min height if the layout below the frame must
+  never move.
 
 ## 0.1.3
 
