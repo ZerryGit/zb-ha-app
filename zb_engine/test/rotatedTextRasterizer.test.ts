@@ -16,6 +16,7 @@ import {
   preRasterizeRotatedText,
   compositeRotatedText,
 } from "../src/data/rotatedTextRasterizer";
+import { expandTextBounds } from "../src/data/textAutoSize";
 import { Canvas } from "../src/engine/canvas";
 import { fontsReady } from "../src/engine/fonts/fontManager";
 import type { DataContext } from "@zb/expressions";
@@ -244,6 +245,61 @@ describe("preRasterizeRotatedText", () => {
     expect(preRendered.size).toBe(1);
     expect((out[0] as Record<string, unknown>).text).toBe("");
     expect((out[0] as Record<string, unknown>).fallbackText).toBe("");
+  });
+
+  it("pre-rasterizes a rotated fixed-flow element after the wrap pass", async () => {
+    await fontsReady;
+
+    // Pipeline order in renderService: the text layout pass wraps FIRST, the
+    // rotated pre-raster runs after and receives the already-"\n"-broken
+    // string. Its glyph loop handles "\n" like any authored break, so fixed
+    // flow needs no code here — this test proves that claim instead of
+    // assuming it.
+    const elements = [
+      {
+        type: "text",
+        text: "several words that wrap into a tall narrow column",
+        textFlow: "fixed",
+        // Un-rotated box leaves the canvas: 250 + 120 = 370 > 320.
+        pos: { x: 250, y: 100 },
+        sizeX: 120,
+        sizeY: 20,
+        fontSize: 24,
+        fontWeight: 400,
+        fontFamily: "Sora",
+        rotationDeg: 90,
+        scale: { x: 1, y: 1 },
+        origin: { x: 10, y: 10 },
+        lineHeight: 1.2,
+        textAlign: "left",
+        fill: 100,
+        opacity: 100,
+        visible: true,
+        enableFill: true,
+      },
+    ] as Record<string, unknown>[];
+
+    const { elements: wrapped, errors } = await expandTextBounds(elements, makeCtx());
+    expect(errors).toEqual([]);
+
+    const laid = wrapped[0] as Record<string, unknown>;
+    expect(String(laid.text)).toContain("\n"); // the wrap actually fired
+    expect(laid.sizeX).toBe(120); // authored width untouched
+    expect(laid.sizeY as number).toBeGreaterThan(20); // grew past the minimum
+
+    const { elements: out, preRendered } = await preRasterizeRotatedText(
+      wrapped,
+      makeCtx(),
+      320,
+      240,
+    );
+
+    expect(preRendered.size).toBe(1);
+    expect((out[0] as Record<string, unknown>).text).toBe("");
+
+    const canvas = new Canvas(320, 240);
+    compositeRotatedText(canvas, preRendered);
+    expect(countBlackPixels(canvas)).toBeGreaterThan(0);
   });
 
   it("does not intercept invisible text", async () => {
