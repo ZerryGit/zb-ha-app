@@ -179,6 +179,13 @@ export default function CanvasArea() {
   // Guides
   const [guides, setGuides] = useState([]);
 
+  // The overflow band overlay reads element positions from the STORE, but a
+  // dragged/transformed node moves live and only commits on release — a band
+  // left visible during the gesture sits stranded at the stale position and
+  // "teleports" on mouse-up. Hide every band while a gesture is in progress,
+  // like the snap guides; it reappears at the committed position.
+  const [suppressOverflowBands, setSuppressOverflowBands] = useState(false);
+
   // Resolved themed colours for the artboard (Konva can't read CSS variables).
   // Read once on mount — the builder is dark-only, so they never change.
   const [maskFill, setMaskFill] = useState('#161618');
@@ -812,6 +819,7 @@ export default function CanvasArea() {
   );
 
   const handleTransformEnd = useCallback(() => {
+    setSuppressOverflowBands(false);
     const node = shapeRefs.current[selectedElementId];
     if (!node) return;
 
@@ -929,6 +937,7 @@ export default function CanvasArea() {
       onClick: (e) => handleSelect(element.id, e),
       onTap: (e) => handleSelect(element.id, e),
       onDragStart: () => {
+        setSuppressOverflowBands(true);
         // When dragging an element that's part of a multi-selection,
         // record sibling start positions so we can move them in sync.
         const ids = useUiStore.getState().selectedElementIds;
@@ -965,6 +974,8 @@ export default function CanvasArea() {
         }
       },
       onDragEnd: (e) => {
+        // The store commit below re-renders the band at the fresh position.
+        setSuppressOverflowBands(false);
         // Commit positions for all selected elements on multi-drag
         if (multiDragStart.current && multiDragStart.current.draggedId === element.id) {
           const ids = useUiStore.getState().selectedElementIds;
@@ -1486,7 +1497,7 @@ export default function CanvasArea() {
               author must see it without hunting for it). The band's top edge
               IS the authored minimum — no second indicator. Nothing here is
               stored; it is a draw over two numbers the render already has. */}
-          {elements?.map((element) => {
+          {!suppressOverflowBands && elements?.map((element) => {
             if (element.type !== 'text') return null;
             const layout = fixedTextLayouts[element.id];
             if (!layout) return null;
@@ -1546,6 +1557,7 @@ export default function CanvasArea() {
             borderStroke="#D42D32"
             borderStrokeWidth={1}
             borderDash={[4, 4]}
+            onTransformStart={() => setSuppressOverflowBands(true)}
             onTransformEnd={handleTransformEnd}
             boundBoxFunc={handleBoundBoxFunc}
           />
