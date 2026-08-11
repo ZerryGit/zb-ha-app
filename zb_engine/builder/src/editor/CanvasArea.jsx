@@ -1490,13 +1490,16 @@ export default function CanvasArea() {
               });
             })()}
 
-          {/* Overflow band — a fixed-flow text element whose wrapped content
-              runs past its authored minimum height gets a dashed band over
-              the grown region, drawn whether or not the element is selected
-              (grow-down is decided server-side against live data, so the
-              author must see it without hunting for it). The band's top edge
-              IS the authored minimum — no second indicator. Nothing here is
-              stored; it is a draw over two numbers the render already has. */}
+          {/* Overflow marker — a fixed-flow text element whose wrapped content
+              runs past its authored minimum height gets a dashed line across
+              the frame at that minimum, drawn whether or not the element is
+              selected (grow-down is decided server-side against live data, so
+              the author must see it without hunting for it). Text below the
+              line is the overrun. A line, not a box: a closed rect next to an
+              unselected element read as a stray spawned object (owner call,
+              2026-08-12). The line IS the authored-minimum marker — no second
+              indicator. Nothing here is stored; it is a draw over two numbers
+              the render already has. */}
           {!suppressOverflowBands && elements?.map((element) => {
             if (element.type !== 'text') return null;
             const layout = fixedTextLayouts[element.id];
@@ -1517,10 +1520,8 @@ export default function CanvasArea() {
                 offsetY={element.origin?.y ?? 0}
                 listening={false}
               >
-                <Rect
-                  y={authoredH}
-                  width={resolveNumeric(element.sizeX, 0, bindingCtx)}
-                  height={overflow}
+                <Line
+                  points={[0, authoredH, resolveNumeric(element.sizeX, 0, bindingCtx), authoredH]}
                   stroke="#D42D32"
                   strokeWidth={1 / zoom}
                   dash={[4 / zoom, 4 / zoom]}

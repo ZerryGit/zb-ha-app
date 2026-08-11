@@ -578,8 +578,9 @@ Errors are collected, not thrown. The image always renders.
   it can run into whatever sits below.
 - **Fix:** Raise the frame's Min height to reserve room for the extra lines, or
   shorten the value with an expression. The builder marks the overrun with a
-  dashed band, but that band reflects the value being previewed — a longer live
-  value on the device can overflow further than what you saw while designing.
+  dashed line at the Min height, but that mark reflects the value being
+  previewed — a longer live value on the device can overflow further than what
+  you saw while designing.
 
 **`image.bin` wrong size**
 - **Cause:** The `POST` reply is framed — a 25-byte header precedes the image —

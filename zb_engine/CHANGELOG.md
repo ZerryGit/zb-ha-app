@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Min height"): set it taller than today's text to reserve room, and a value
   that gains a line later fills the reserve instead of shifting everything
   below it. Text that outgrows the reserve pushes downward — it is never cut
-  off — and the editor marks the overrun with a dashed band so you see it
-  while designing. An "Auto width" / "Fixed width" control in the text
+  off — and the editor draws a dashed line across the frame at the Min height
+  so you see the overrun while designing. An "Auto width" / "Fixed width" control in the text
   inspector switches between the two behaviours; converting at the current
   size changes nothing visually. Existing widgets are untouched: every text
   element keeps today's hugging behaviour until you resize it yourself.
@@ -98,10 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A fixed text frame grows downward and can overlap what sits below it.**
   Text is never cut off — a value too long for its reserve pushes past the
   frame's minimum height instead. The editor marks the overrun with a dashed
-  band whenever it happens, but the band reflects the value being previewed: a
-  longer live value on the device can overflow further than what you saw while
-  designing. Leave slack in the Min height if the layout below the frame must
-  never move.
+  line at the Min height whenever it happens, but the mark reflects the value
+  being previewed: a longer live value on the device can overflow further than
+  what you saw while designing. Leave slack in the Min height if the layout
+  below the frame must never move.
 
 ## 0.1.3
 
