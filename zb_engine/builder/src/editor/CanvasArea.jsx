@@ -145,8 +145,13 @@ export default function CanvasArea() {
     if (!bitmapFontsLoaded) return layouts;
     for (const el of elements ?? []) {
       if (el.type !== 'text' || el.textFlow !== 'fixed') continue;
+      const displayText = resolveDisplayText(el.text, el.fallbackText, bindingCtx);
+      // The server leaves an empty text element untouched (no wrap, no grow) —
+      // measuring '' as one line here would show a display box and overflow
+      // band the device never renders.
+      if (!displayText) continue;
       const layout = layoutTextBounds({
-        text: resolveDisplayText(el.text, el.fallbackText, bindingCtx),
+        text: displayText,
         fontSize: el.fontSize ?? 14,
         fontWeight: el.fontWeight ?? 400,
         fontFamily: el.fontFamily ?? 'Sora',
