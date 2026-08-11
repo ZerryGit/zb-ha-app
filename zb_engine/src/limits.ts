@@ -69,6 +69,14 @@ export const RENDER_TIMEOUT_MS = 30_000; // 30 seconds
 /** Maximum elements after graph expansion — prevents OOM. */
 export const MAX_EXPANDED_ELEMENTS = 50_000;
 
+/**
+ * Maximum lines one text element may be wrapped into. Far above any real
+ * layout, far below the million-entry array a 200 KB value in a 20 px frame
+ * would otherwise build before the render timeout noticed. On hitting it,
+ * `data/textLayout.ts` stops wrapping and emits the remainder as one line.
+ */
+export const MAX_WRAPPED_LINES = 4096;
+
 // ── Geometry bounds ────────────────────────────────────────────
 
 /**

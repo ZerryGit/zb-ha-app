@@ -14,7 +14,8 @@
 
 import { resolveValue, type DataContext } from "@zb/expressions";
 import { getFontForFamily, fontsReady } from "../engine/fonts/fontManager";
-import type { FontPack, DecodedGlyph } from "../engine/fonts/fontTypes";
+import type { FontPack } from "../engine/fonts/fontTypes";
+import { measureLineVisual } from "./textLayout";
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -31,32 +32,6 @@ function str(v: unknown, fallback: string): string {
 }
 
 // ── Text measurement (mirrors engine text.ts layout logic) ─────
-
-/**
- * Measure the visual pixel width of a single line, including the last
- * glyph's overhang beyond its xAdvance.  This matches the builder's
- * measureLineVisual() and reflects the actual pixel extent that would
- * be clipped by the engine's blitGlyphClipped().
- */
-function measureLineVisual(line: string, font: FontPack): number {
-  let width = 0;
-  let lastGlyphOverhang = 0;
-
-  for (const char of line) {
-    const glyph = font.glyphs.get(char);
-    if (glyph) {
-      lastGlyphOverhang = Math.max(0, glyph.xOffset + glyph.width - glyph.xAdvance);
-      width += glyph.xAdvance + font.meta.letterSpacing;
-    } else {
-      const space = font.glyphs.get(" ");
-      width += space?.xAdvance ?? Math.round(font.meta.fontSize * 0.3);
-      lastGlyphOverhang = 0;
-    }
-  }
-
-  if (line.length > 0) width -= font.meta.letterSpacing;
-  return width + lastGlyphOverhang;
-}
 
 /**
  * Measure the pixel bounds required to render a text string without clipping.

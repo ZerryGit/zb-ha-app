@@ -1,0 +1,100 @@
+{
+  "_comment": "Shared wrapping vectors for src/data/textLayout.ts, run from BOTH trees (test/textLayout.test.ts and builder/src/utils/__tests__/textLayout.test.js) so a stale @shared/textLayout alias cannot go unnoticed. The font pack is SYNTHETIC: real packs are not loadable in the builder's vitest environment, and round metrics make every expectation exact by construction. Every glyph advances 10px with no overhang except 'j' (14px wide, 10px advance -> 4px overhang) and 'W' (20px advance). letterSpacing is 0 so the numbers stay hand-checkable; letterSpacing arithmetic is covered by the server unit test. Scope: wrapping only — value resolution stays covered by each tree's own tests.",
+  "font": {
+    "meta": { "letterSpacing": 0, "fontSize": 10 },
+    "glyphs": {
+      " ": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "-": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "a": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "b": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "c": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "d": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "e": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "f": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "g": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "h": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "j": { "xAdvance": 10, "xOffset": 0, "width": 14 },
+      "k": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "l": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "n": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "o": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "w": { "xAdvance": 10, "xOffset": 0, "width": 10 },
+      "W": { "xAdvance": 20, "xOffset": 0, "width": 20 }
+    }
+  },
+  "cases": [
+    {
+      "name": "greedy fill breaks at the last whitespace that fits",
+      "text": "aaa bbb ccc",
+      "maxWidth": 70,
+      "expectedLines": ["aaa bbb", "ccc"]
+    },
+    {
+      "name": "author-typed newlines survive and each paragraph wraps alone",
+      "text": "aaa\nbbb ccc",
+      "maxWidth": 30,
+      "expectedLines": ["aaa", "bbb", "ccc"]
+    },
+    {
+      "name": "trailing whitespace does not count toward the fit test",
+      "text": "aa bb cc",
+      "maxWidth": 50,
+      "expectedLines": ["aa bb", "cc"]
+    },
+    {
+      "name": "a lone trailing space never forces a break",
+      "text": "aaaa ",
+      "maxWidth": 40,
+      "expectedLines": ["aaaa"]
+    },
+    {
+      "name": "a hyphen followed by a non-space is a break opportunity",
+      "text": "well-known",
+      "maxWidth": 50,
+      "expectedLines": ["well-", "known"]
+    },
+    {
+      "name": "a word wider than the frame is split character by character",
+      "text": "abcdefgh",
+      "maxWidth": 30,
+      "expectedLines": ["abc", "def", "gh"]
+    },
+    {
+      "name": "a single character wider than the frame is emitted alone",
+      "text": "WWW",
+      "maxWidth": 10,
+      "expectedLines": ["W", "W", "W"]
+    },
+    {
+      "name": "glyph overhang counts, so the advance-only measure is not enough",
+      "text": "jj",
+      "maxWidth": 20,
+      "expectedLines": ["j", "j"]
+    },
+    {
+      "name": "empty paragraphs keep the blank line they render as",
+      "text": "a\n\nb",
+      "maxWidth": 100,
+      "expectedLines": ["a", "", "b"]
+    },
+    {
+      "name": "an authored leading indent is preserved",
+      "text": "  ab",
+      "maxWidth": 100,
+      "expectedLines": ["  ab"]
+    },
+    {
+      "name": "a non-positive frame returns the paragraphs unwrapped",
+      "text": "aaa bbb\nccc",
+      "maxWidth": 0,
+      "expectedLines": ["aaa bbb", "ccc"]
+    },
+    {
+      "name": "the line cap stops wrapping and emits the remainder verbatim",
+      "text": "aa bb cc dd",
+      "maxWidth": 20,
+      "maxLines": 2,
+      "expectedLines": ["aa", "bb cc dd"]
+    }
+  ]
+}

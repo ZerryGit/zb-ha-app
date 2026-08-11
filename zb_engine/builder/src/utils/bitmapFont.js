@@ -19,6 +19,8 @@
  *   const canvas = renderBitmapText({ text, width, height, fontSize, ... });
  */
 
+import { measureLineVisual } from '@shared/textLayout';
+
 // ── Types (mirrors src/engine/fonts/fontTypes.ts) ──────────────
 
 /**
@@ -240,32 +242,6 @@ function measureLine(line, font) {
   }
   if (line.length > 0) width -= font.meta.letterSpacing;
   return width;
-}
-
-/**
- * Measure the pixel width of a line including the last glyph's overhang.
- * Used for bounding box calculation where we need the full visual extent,
- * not just the cursor advance width.
- * @param {string} line
- * @param {FontPack} font
- * @returns {number}
- */
-function measureLineVisual(line, font) {
-  let width = 0;
-  let lastGlyphOverhang = 0;
-  for (const char of line) {
-    const glyph = font.glyphs.get(char);
-    if (glyph) {
-      lastGlyphOverhang = Math.max(0, (glyph.xOffset + glyph.width) - glyph.xAdvance);
-      width += glyph.xAdvance + font.meta.letterSpacing;
-    } else {
-      const space = font.glyphs.get(' ');
-      width += space?.xAdvance ?? Math.round(font.meta.fontSize * 0.3);
-      lastGlyphOverhang = 0;
-    }
-  }
-  if (line.length > 0) width -= font.meta.letterSpacing;
-  return width + lastGlyphOverhang;
 }
 
 /**
