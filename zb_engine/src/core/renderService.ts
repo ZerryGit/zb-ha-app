@@ -433,9 +433,11 @@ export async function runPipeline(
     throwIfAborted(signal);
     const { misc, sources, elements } = payload;
 
-    // Expand text bounding boxes to fit resolved dynamic content.
-    // Only grows sizeX/sizeY — never shrinks — so user layout is preserved.
-    const sizedElements = await expandTextBounds(expandedElements, ctx);
+    // Lay text elements out against their resolved content: `auto` elements
+    // grow to fit (never shrink, so user layout is preserved), `fixed` ones
+    // wrap to the authored width and grow downward past their minimum height.
+    const { elements: sizedElements, errors: textLayoutErrors } =
+      await expandTextBounds(expandedElements, ctx);
     throwIfAborted(signal);
 
     // Out-of-engine pre-rasterization for rotated/scaled text whose
@@ -569,6 +571,7 @@ export async function runPipeline(
         sourceErrors,
         renderErrors: [
           ...expandErrors,
+          ...textLayoutErrors,
           ...userAssetErrors,
           ...preRasterErrors,
           ...rotatedSvgErrors,
