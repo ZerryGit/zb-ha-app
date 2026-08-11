@@ -66,6 +66,7 @@ export function createElement(type, partialOverrides) {
         fontWeight: 400,
         textAlign: 'left',
         lineHeight: 1.2,
+        textFlow: 'auto',
       };
       break;
 
