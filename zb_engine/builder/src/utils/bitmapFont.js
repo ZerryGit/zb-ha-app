@@ -19,7 +19,7 @@
  *   const canvas = renderBitmapText({ text, width, height, fontSize, ... });
  */
 
-import { measureLineVisual } from '@shared/textLayout';
+import { layoutTextElement, measureLineVisual } from '@shared/textLayout';
 
 // ── Types (mirrors src/engine/fonts/fontTypes.ts) ──────────────
 
@@ -277,6 +277,50 @@ export function measureTextBounds({ text, fontSize, fontWeight = 400, fontFamily
     width: maxLineWidth + padding,
     height: lines.length * lineSpacing + padding,
   };
+}
+
+/**
+ * Measure — and, for fixed-flow elements, wrap — a text element's resolved
+ * string through the shared layout module, using the same snapped font pack
+ * the canvas renders with.
+ *
+ * The line-break decision itself lives in `@shared/textLayout` (the server
+ * pre-render pass runs the identical code); this wrapper only resolves the
+ * font. Returns the content box: for `fixed` elements the caller displays
+ * `max(authored sizeY, height)` and stores nothing.
+ *
+ * @param {object} opts
+ * @param {string} opts.text - The resolved display text
+ * @param {number} opts.fontSize
+ * @param {number} [opts.fontWeight=400]
+ * @param {string} [opts.fontFamily='Sora']
+ * @param {number} [opts.lineHeight=1.2]
+ * @param {unknown} [opts.textFlow] - `"fixed"` wraps to `sizeX`; anything else measures only
+ * @param {number} [opts.sizeX] - Authored frame width, read only in fixed mode
+ * @returns {{ text: string, width: number, height: number } | null} Null if fonts are unavailable
+ */
+export function layoutTextBounds({
+  text,
+  fontSize,
+  fontWeight = 400,
+  fontFamily = 'Sora',
+  lineHeight = 1.2,
+  textFlow,
+  sizeX,
+}) {
+  const font = getFont(fontFamily, fontSize, fontWeight);
+  if (!font) return null;
+
+  const result = layoutTextElement({
+    text: text == null ? '' : String(text),
+    font,
+    fontSize,
+    lineHeight,
+    textFlow,
+    sizeX,
+  });
+
+  return { text: result.text, width: result.contentWidth, height: result.contentHeight };
 }
 
 // ── Text rendering to HTMLCanvasElement ─────────────────────────

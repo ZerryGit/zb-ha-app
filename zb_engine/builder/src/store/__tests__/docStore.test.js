@@ -436,6 +436,38 @@ describe('docStore', () => {
       warn.mockRestore();
     });
 
+    it('updateElementDerived drops BOTH sizes on a fixed-flow text element', () => {
+      // The allowlist is empty for fixed text: both dimensions are authored,
+      // so a leaked derived write would silently eat the user's frame.
+      state().updateElement('e2', { textFlow: 'fixed', sizeX: 40, sizeY: 16 });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      state().updateElementDerived('e2', { sizeX: 64, sizeY: 18 });
+
+      const el = state().docs['w1'].doc.elements.find((e) => e.id === 'e2');
+      expect(el.sizeX).toBe(40);
+      expect(el.sizeY).toBe(16);
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('authored sizes + textFlow survive a store round-trip as one undoable write', () => {
+      state().updateElement('e2', { sizeX: 120, sizeY: 40, textFlow: 'fixed' });
+
+      const el = state().docs['w1'].doc.elements.find((e) => e.id === 'e2');
+      expect(el.sizeX).toBe(120);
+      expect(el.sizeY).toBe(40);
+      expect(el.textFlow).toBe('fixed');
+      expect(state().docs['w1'].dirty).toBe(true);
+
+      // One updateElement call = one undo entry: undo reverts the mode flip
+      // and the baked sizes together.
+      state().undo();
+      const reverted = state().docs['w1'].doc.elements.find((e) => e.id === 'e2');
+      expect(reverted.textFlow).toBeUndefined();
+      expect(reverted.sizeX).toBeUndefined();
+    });
+
     it('updateElementDerived rejects all keys for non-text elements', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       state().updateElementDerived('e1', { sizeX: 50 }); // e1 is a rect

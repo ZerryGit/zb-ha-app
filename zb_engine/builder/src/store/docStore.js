@@ -638,8 +638,11 @@ export const useDocStore = create(
      * other key is dropped with a dev-time warning so this mutation
      * cannot become a back-door for arbitrary writes.
      *
-     * Allowlist (per Task 7):
-     *   - text elements: `sizeX`, `sizeY`
+     * Allowlist (per Task 7; narrowed by the text-frame work):
+     *   - auto-flow text elements: `sizeX`, `sizeY`
+     *   - fixed-flow text elements: nothing — both sizes are authored, so
+     *     the renderer owns no field on them; the grown display box is
+     *     computed where the element renders and never stored
      *
      * Auto-driven hooks (e.g. `useAutoSizeText`) MUST use this mutation.
      * Treating measured bounds as authored content corrupts undo and
@@ -653,7 +656,7 @@ export const useDocStore = create(
         const element = entry.doc.elements.find((e) => e?.id === id);
         if (!element) return;
 
-        const allowed = element.type === 'text'
+        const allowed = element.type === 'text' && element.textFlow !== 'fixed'
           ? new Set(['sizeX', 'sizeY'])
           : new Set();
 

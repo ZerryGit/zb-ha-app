@@ -27,8 +27,18 @@ import {
 
 function CommonFields({ element, updateElement }) {
   const isLine = element.type === 'line';
+  const isText = element.type === 'text';
+  const isFixedText = isText && element.textFlow === 'fixed';
   const isLocked = useUiStore((s) => !!s.lockedElementIds[element.id]);
   const toggleLock = useUiStore((s) => s.toggleElementLock);
+
+  // Typing a size into a text element authors that dimension, which only
+  // holds if the element is fixed-flow — otherwise the auto-size hook
+  // clobbers the typed value on its next pass. Both writes go in ONE
+  // updateElement call: one undo entry, and no window where the hook sees
+  // an auto element with a hand-typed size.
+  const sizePatch = (patch) =>
+    updateElement(element.id, isText ? { ...patch, textFlow: 'fixed' } : patch);
 
   return (
     <div className="field-stack">
@@ -108,16 +118,18 @@ function CommonFields({ element, updateElement }) {
           <Field label="Width" row>
             <ValueEditor
               value={element.sizeX}
-              onChange={(val) => updateElement(element.id, { sizeX: val })}
+              onChange={(val) => sizePatch({ sizeX: val })}
               renderInput={(val, onChange) => (
                 <NumberInput value={val} onChange={onChange} min={0} />
               )}
             />
           </Field>
-          <Field label="Height" row>
+          {/* On a fixed text frame the vertical size is a floor, not a
+              height — content past it grows the box downward. */}
+          <Field label={isFixedText ? 'Min height' : 'Height'} row>
             <ValueEditor
               value={element.sizeY}
-              onChange={(val) => updateElement(element.id, { sizeY: val })}
+              onChange={(val) => sizePatch({ sizeY: val })}
               renderInput={(val, onChange) => (
                 <NumberInput value={val} onChange={onChange} min={0} />
               )}
@@ -609,6 +621,36 @@ function TextPanel({ element, updateElement }) {
                 ]}
               />
             )}
+          />
+        </Field>
+      </div>
+      <div className="field-row">
+        {/* "…width" on both labels because height is elastic in BOTH modes —
+            a fixed frame still grows downward past its minimum. */}
+        <Field label="Sizing" row>
+          <Dropdown
+            value={element.textFlow === 'fixed' ? 'fixed' : 'auto'}
+            onChange={(val) => {
+              if (val === 'fixed') {
+                // Bake the current measured box as the authored one, so
+                // converting at the current size is a visual no-op. The
+                // sizes are already in the doc (the auto-size hook keeps
+                // them current); writing them here makes them authored in
+                // the same undo entry as the mode flip.
+                const patch = { textFlow: 'fixed' };
+                if (typeof element.sizeX === 'number') patch.sizeX = element.sizeX;
+                if (typeof element.sizeY === 'number') patch.sizeY = element.sizeY;
+                updateElement(element.id, patch);
+              } else {
+                // Back to hugging: the auto-size hook re-measures on its
+                // next pass and shrink-wraps the box.
+                updateElement(element.id, { textFlow: 'auto' });
+              }
+            }}
+            options={[
+              { value: 'auto', label: 'Auto width' },
+              { value: 'fixed', label: 'Fixed width' },
+            ]}
           />
         </Field>
       </div>

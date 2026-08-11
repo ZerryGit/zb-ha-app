@@ -31,6 +31,8 @@ import { resolveVisibilityValue } from '../utils/visibility.js';
 import { resolveAssetSrc } from '../utils/assetSrc.js';
 import { resolveDisplayText, useAutoSizeText } from './useAutoSizeText.js';
 import { useAutoFetchSources } from './useAutoFetchSources.js';
+import { layoutTextBounds } from '../utils/bitmapFont.js';
+import { TEXT_RESIZE_ANCHORS, textReserveOverflow } from './textFrame.js';
 
 /** How fast zooming with the wheel feels. */
 const ZOOM_SENSITIVITY = 1.05;
@@ -130,6 +132,32 @@ export default function CanvasArea() {
 
   useAutoSizeText({ elements, bitmapFontsLoaded, bindingCtx, updateElementDerived });
   useAutoFetchSources(sources);
+
+  // Wrapped layout for every fixed-flow text element, keyed by element id.
+  // Computed at render time and never written to the store: the display box
+  // is max(authored sizeY, content height), and the overflow past the
+  // authored minimum drives the dashed overflow band. The line breaks come
+  // from the same shared module the server pre-render pass runs, so the
+  // canvas preview and the device wrap identically for the same input —
+  // though a longer live value can still overflow further on the device.
+  const fixedTextLayouts = useMemo(() => {
+    const layouts = {};
+    if (!bitmapFontsLoaded) return layouts;
+    for (const el of elements ?? []) {
+      if (el.type !== 'text' || el.textFlow !== 'fixed') continue;
+      const layout = layoutTextBounds({
+        text: resolveDisplayText(el.text, el.fallbackText, bindingCtx),
+        fontSize: el.fontSize ?? 14,
+        fontWeight: el.fontWeight ?? 400,
+        fontFamily: el.fontFamily ?? 'Sora',
+        lineHeight: el.lineHeight ?? 1.2,
+        textFlow: 'fixed',
+        sizeX: resolveNumeric(el.sizeX, 0, bindingCtx),
+      });
+      if (layout) layouts[el.id] = layout;
+    }
+    return layouts;
+  }, [elements, bindingCtx, bitmapFontsLoaded]);
 
   const width = size?.width ?? 240;
   const height = size?.height ?? 240;
@@ -761,6 +789,18 @@ export default function CanvasArea() {
         }
       }
 
+      // Floor a text-frame drag at ~8 px wide and one line tall so a handle
+      // drag cannot produce a degenerate frame (the render's maxWidth <= 0
+      // guard still backstops anything that slips through).
+      const selEl = elements?.find((el) => el.id === selectedElementId);
+      if (selEl?.type === 'text') {
+        const minW = 8 * z;
+        const minH =
+          (Math.round((selEl.fontSize ?? 14) * (selEl.lineHeight ?? 1.2)) + 4) * z;
+        if (newBox.width < minW) newBox.width = minW;
+        if (newBox.height < minH) newBox.height = minH;
+      }
+
       return newBox;
     },
     [snapping, selectedElementId, elements, guides],
@@ -784,8 +824,10 @@ export default function CanvasArea() {
     let newY = node.y() - (element.origin?.y ?? 0);
     const newRotation = Math.round(node.rotation());
 
-    // Text elements are auto-sized by measureTextBounds — only update pos/rotation.
-    if (element.type === 'text') {
+    // A rotation-only transform (scale untouched) keeps today's behaviour for
+    // text: write pos/rotation and nothing else — rotating an element must
+    // not convert it to fixed flow or bake sizes.
+    if (element.type === 'text' && scaleX === 1 && scaleY === 1) {
       if (snapping.snapEnabled) {
         const step = snapping.gridStep;
         newX = snapToGrid(newX, step);
@@ -795,8 +837,14 @@ export default function CanvasArea() {
       return;
     }
 
-    let newSizeX = (element.sizeX ?? 100) * scaleX;
-    let newSizeY = (element.sizeY ?? 100) * scaleY;
+    // Dragging a resize handle on a text element converts it to fixed flow
+    // and bakes the dragged box (one store write, one undo entry). Sizes come
+    // from the node rather than the element because a grown fixed element
+    // renders taller than its authored minimum — the drag operates on what is
+    // on screen, and where the user releases becomes the new minimum.
+    const isText = element.type === 'text';
+    let newSizeX = (isText ? node.width() : (element.sizeX ?? 100)) * scaleX;
+    let newSizeY = (isText ? node.height() : (element.sizeY ?? 100)) * scaleY;
 
     if (snapping.snapEnabled) {
       const step = snapping.gridStep;
@@ -819,6 +867,7 @@ export default function CanvasArea() {
       sizeX: newSizeX,
       sizeY: newSizeY,
       scale: { x: 1, y: 1 },
+      ...(isText ? { textFlow: 'fixed' } : {}),
     });
 
     // Clear snap guides after resize is committed
@@ -1217,13 +1266,24 @@ export default function CanvasArea() {
               }
 
               if (element.type === 'text') {
+                // A fixed-flow element renders its pre-wrapped string in a
+                // display box of max(authored sizeY, content height) — the
+                // grown height is never stored. An auto element (no layout
+                // entry) keeps today's path untouched.
+                const layout = fixedTextLayouts[element.id];
+                const authoredH = resolveNumeric(element.sizeY, 0, bindingCtx);
+                const overflow = layout
+                  ? textReserveOverflow(element.textFlow, authoredH, layout.height)
+                  : 0;
                 return (
                   <BitmapText
                     key={element.id}
                     {...getCommonNodeProps(element)}
                     width={resolveNumeric(element.sizeX, 0, bindingCtx)}
-                    height={resolveNumeric(element.sizeY, 0, bindingCtx)}
-                    text={resolveDisplayText(element.text, element.fallbackText, bindingCtx)}
+                    height={authoredH + overflow}
+                    text={layout
+                      ? layout.text
+                      : resolveDisplayText(element.text, element.fallbackText, bindingCtx)}
                     fontFamily={element.fontFamily ?? 'Sora'}
                     fontSize={element.fontSize ?? 14}
                     fontWeight={element.fontWeight ?? 400}
@@ -1414,6 +1474,46 @@ export default function CanvasArea() {
               });
             })()}
 
+          {/* Overflow band — a fixed-flow text element whose wrapped content
+              runs past its authored minimum height gets a dashed band over
+              the grown region, drawn whether or not the element is selected
+              (grow-down is decided server-side against live data, so the
+              author must see it without hunting for it). The band's top edge
+              IS the authored minimum — no second indicator. Nothing here is
+              stored; it is a draw over two numbers the render already has. */}
+          {elements?.map((element) => {
+            if (element.type !== 'text') return null;
+            const layout = fixedTextLayouts[element.id];
+            if (!layout) return null;
+            const authoredH = resolveNumeric(element.sizeY, 0, bindingCtx);
+            const overflow = textReserveOverflow(element.textFlow, authoredH, layout.height);
+            if (overflow <= 0) return null;
+            if (!resolveVisibilityValue(element.visible, bindingCtx, true)) return null;
+            return (
+              <Group
+                key={`text-overflow-${element.id}`}
+                x={resolveNumeric(element.pos?.x, 0, bindingCtx) + (element.origin?.x ?? 0)}
+                y={resolveNumeric(element.pos?.y, 0, bindingCtx) + (element.origin?.y ?? 0)}
+                rotation={resolveNumeric(element.rotationDeg, 0, bindingCtx)}
+                scaleX={element.scale?.x ?? 1}
+                scaleY={element.scale?.y ?? 1}
+                offsetX={element.origin?.x ?? 0}
+                offsetY={element.origin?.y ?? 0}
+                listening={false}
+              >
+                <Rect
+                  y={authoredH}
+                  width={resolveNumeric(element.sizeX, 0, bindingCtx)}
+                  height={overflow}
+                  stroke="#D42D32"
+                  strokeWidth={1 / zoom}
+                  dash={[4 / zoom, 4 / zoom]}
+                  listening={false}
+                />
+              </Group>
+            );
+          })}
+
           {/* Marquee selection rectangle */}
           {marquee && (
             <Rect
@@ -1433,7 +1533,11 @@ export default function CanvasArea() {
           <Transformer
             ref={transformerRef}
             rotateEnabled={true}
-            resizeEnabled={selectedElement?.type !== 'text'}
+            // Text is resizable since the frame work: dragging any handle
+            // converts the element to fixed flow and bakes the dragged
+            // size(s) in handleTransformEnd. Non-text keeps Konva's default
+            // (full) anchor set.
+            enabledAnchors={selectedElement?.type === 'text' ? TEXT_RESIZE_ANCHORS : undefined}
             borderStroke="#D42D32"
             borderStrokeWidth={1}
             borderDash={[4, 4]}

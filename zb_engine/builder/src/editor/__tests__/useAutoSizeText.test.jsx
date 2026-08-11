@@ -9,7 +9,7 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react';
 
 const bitmapFontMocks = vi.hoisted(() => ({
   fontsReady: vi.fn(() => true),
-  measureTextBounds: vi.fn(),
+  layoutTextBounds: vi.fn(),
 }));
 
 vi.mock('../../utils/bitmapFont.js', () => bitmapFontMocks);
@@ -62,7 +62,7 @@ describe('useAutoSizeText', () => {
   });
 
   it('updates text bounds when measured display size changes', async () => {
-    bitmapFontMocks.measureTextBounds.mockReturnValue({ width: 64, height: 18 });
+    bitmapFontMocks.layoutTextBounds.mockReturnValue({ text: 'Hello', width: 64, height: 18 });
     const updateElementDerived = vi.fn();
     const elements = [
       {
@@ -101,7 +101,71 @@ describe('useAutoSizeText', () => {
       updateElementDerived,
     }));
 
-    expect(bitmapFontMocks.measureTextBounds).not.toHaveBeenCalled();
+    expect(bitmapFontMocks.layoutTextBounds).not.toHaveBeenCalled();
     expect(updateElementDerived).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing for a fixed-flow element — both sizes are authored', () => {
+    // clearAllMocks does not undo the previous test's fontsReady(false).
+    bitmapFontMocks.fontsReady.mockReturnValue(true);
+    bitmapFontMocks.layoutTextBounds.mockReturnValue({ text: 'Hello', width: 64, height: 18 });
+    const updateElementDerived = vi.fn();
+    const elements = [
+      {
+        id: 'text_1',
+        type: 'text',
+        text: 'Hello',
+        textFlow: 'fixed',
+        fontSize: 12,
+        sizeX: 40,
+        sizeY: 16,
+      },
+    ];
+
+    renderHook(() => useAutoSizeText({
+      elements,
+      bitmapFontsLoaded: true,
+      bindingCtx: {},
+      updateElementDerived,
+    }));
+
+    // Skipped entirely: no measure call, no derived write, no warn-noise.
+    expect(bitmapFontMocks.layoutTextBounds).not.toHaveBeenCalled();
+    expect(updateElementDerived).not.toHaveBeenCalled();
+  });
+
+  it('re-measures on the first auto pass after a fixed -> auto flip', async () => {
+    bitmapFontMocks.fontsReady.mockReturnValue(true);
+    bitmapFontMocks.layoutTextBounds.mockReturnValue({ text: 'Hello', width: 64, height: 18 });
+    const updateElementDerived = vi.fn();
+    const fixedElement = {
+      id: 'text_1',
+      type: 'text',
+      text: 'Hello',
+      textFlow: 'fixed',
+      fontSize: 12,
+      sizeX: 40,
+      sizeY: 16,
+    };
+
+    const { rerender } = renderHook(
+      ({ elements }) => useAutoSizeText({
+        elements,
+        bitmapFontsLoaded: true,
+        bindingCtx: {},
+        updateElementDerived,
+      }),
+      { initialProps: { elements: [fixedElement] } },
+    );
+
+    expect(updateElementDerived).not.toHaveBeenCalled();
+
+    // Toggling back to auto must drop back to hugging on the next measure
+    // pass, even though the text itself never changed.
+    rerender({ elements: [{ ...fixedElement, textFlow: 'auto' }] });
+
+    await waitFor(() => {
+      expect(updateElementDerived).toHaveBeenCalledWith('text_1', { sizeX: 64, sizeY: 18 });
+    });
   });
 });
