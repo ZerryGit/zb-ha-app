@@ -1,7 +1,7 @@
 export const MAX_IMAGE_FETCH_BYTES = 10 * 1024 * 1024;
 export const MAX_SVG_FETCH_BYTES = 1 * 1024 * 1024;
 export const MAX_INLINE_SVG_BYTES = 1 * 1024 * 1024;
-export const IMAGE_FETCH_TIMEOUT_MS = 300;
+export const IMAGE_FETCH_TIMEOUT_MS = 5000;
 
 /** Maximum time allowed for a single SVG rasterization pass via sharp. */
 export const SVG_RASTER_TIMEOUT_MS = 300;
