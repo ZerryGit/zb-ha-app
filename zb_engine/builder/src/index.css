@@ -1560,3 +1560,71 @@ body {
   cursor: default;
 }
 
+
+/* ── Busy overlay ─────────────────────────────────────────────
+   Centered spinner for slow user-initiated actions (preview render,
+   data refresh, deploy). See components/BusyOverlay.jsx.
+
+   `pointer-events: none` is load-bearing: the triggering buttons already
+   disable themselves, so this never needs to trap input — and a task that
+   fails to settle can therefore never lock the user out of the editor.
+   z-index sits just under .modal-overlay (9999) so a dialog always wins. */
+.busy-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.busy-overlay-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 10px);
+  padding: var(--sp-4, 14px) var(--sp-5, 18px);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop, var(--shadow));
+  color: var(--c-text);
+  font-size: var(--text-sm, 0.9em);
+  user-select: none;
+}
+
+.busy-overlay-label {
+  white-space: nowrap;
+}
+
+.busy-overlay-elapsed {
+  color: var(--c-text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5em;
+}
+
+.busy-spinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--c-border);
+  border-top-color: var(--c-accent);
+  border-radius: 50%;
+  animation: busy-spin 0.7s linear infinite;
+}
+
+@keyframes busy-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Respect a reduced-motion preference: keep the card (it still carries the
+   label and elapsed time) but stop the rotation. */
+@media (prefers-reduced-motion: reduce) {
+  .busy-spinner {
+    animation: none;
+    border-top-color: var(--c-border);
+  }
+}

@@ -39,6 +39,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resize, size edit, or flip of "Text overflow" turns it into a frame at its
   current size.
 
+- **Preview, Refresh data and Deploy now show that they are working.** These
+  three actions wait on the server, and a widget carrying remote images can
+  keep them waiting for several seconds. Until now the only sign anything was
+  happening was a greyed-out button, which is hard to tell apart from a frozen
+  page. A spinner now appears in the middle of the screen naming the action,
+  and once the wait passes a second and a half it also counts the seconds, so a
+  slow image fetch looks like a slow image fetch instead of a hang. It stays
+  out of the way of quick work: an action that finishes promptly never shows it
+  at all, and it never blocks the editor while it is up.
+
 ### Changed
 
 - **Remote images hosted far from the add-on no longer fail to load.** An image

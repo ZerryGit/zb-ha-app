@@ -9,6 +9,7 @@ import AssetPickerProvider from './platform/AssetPickerProvider.jsx';
 import GridSizeSelector from './components/GridSizeSelector.jsx';
 import SetupModeScreen from './components/SetupModeScreen.jsx';
 import NoticeModal from './components/NoticeModal.jsx';
+import BusyOverlay from './components/BusyOverlay.jsx';
 import { testSource, renderPreview, getPreviewImageUrl, expandPayload, loadBitmapFonts, fetchHostIp, pushDeviceConfig } from './platform/apiClient.js';
 import { useEntityStore } from './platform/entityStore.js';
 import HaStateSourceFields from './platform/HaStateSourceFields.jsx';
@@ -399,6 +400,9 @@ function App() {
       <AssetPickerProvider />
       {/* Single mount for every in-app notice; renders only when one is showing. */}
       <NoticeModal />
+      {/* Centered spinner while Preview / Refresh data / Deploy are running.
+          Self-hides when nothing is in flight, and never traps input. */}
+      <BusyOverlay />
     </div>
   );
 }

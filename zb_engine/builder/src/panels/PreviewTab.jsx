@@ -73,6 +73,7 @@ export default function PreviewTab() {
     if (!activeDoc) return;
     setRefreshing(true);
     setRenderError(null);
+    const busyToken = useUiStore.getState().beginBusyTask('Rendering preview…');
     try {
       // For the fullscreen slot, pass the paired primary's sources so the
       // companion preview inherits them (merged in at export time, matching
@@ -93,6 +94,7 @@ export default function PreviewTab() {
       setRenderError(err.message);
     } finally {
       setRefreshing(false);
+      useUiStore.getState().endBusyTask(busyToken);
     }
   }, [previewRenderer, previewImageUrlGetter, activeDoc, previewSlot, primaryDoc]);
 

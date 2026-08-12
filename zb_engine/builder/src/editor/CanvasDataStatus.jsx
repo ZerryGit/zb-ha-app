@@ -66,7 +66,12 @@ export default function CanvasDataStatus({ sources }) {
     refreshAllSources(sources);
     // Also refresh the server Preview so the canvas and Preview agree from one
     // click. Fire-and-forget — a render failure must not block the data fetch.
-    renderFocusedPreview().catch(() => {});
+    // The spinner tracks the render (the slow half, which waits on remote
+    // assets); the source fetches report their own progress in the pill above.
+    const busyToken = useUiStore.getState().beginBusyTask('Refreshing data…');
+    renderFocusedPreview()
+      .catch(() => {})
+      .finally(() => useUiStore.getState().endBusyTask(busyToken));
   }, [sources]);
 
   // Nothing to be fresh/stale about with no fetchable sources — stay out of
