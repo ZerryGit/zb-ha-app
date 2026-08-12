@@ -1,6 +1,6 @@
 # ZerryBit Engine — Documentation
 
-**Version 0.1.3**
+**Version 0.1.4**
 
 > **Note.** For the builder SPA API, see [`BUILDER_API.md`](BUILDER_API.md).
 > Port `8000` is read-only (image serving for ESP32 devices). All write
@@ -10,7 +10,7 @@
 
 ## Overview
 
-ZerryBit Engine (v0.1.3) is a self-contained TypeScript rendering pipeline
+ZerryBit Engine (v0.1.4) is a self-contained TypeScript rendering pipeline
 built into a Home Assistant Add-on. It accepts a declarative JSON payload,
 optionally fetches live data from HA entities and external APIs, and renders a
 1-bit dithered image for E-ink displays (ESP32 and similar devices). Includes a
