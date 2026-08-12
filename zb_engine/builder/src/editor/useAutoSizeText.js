@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { evaluate, isBinding, isExpression, buildPipeExpression } from '@zb/expressions';
+import { isFramedTextFlow } from '@shared/textLayout';
 import { layoutTextBounds, fontsReady } from '../utils/bitmapFont.js';
 
 /**
@@ -87,10 +88,10 @@ export function useAutoSizeText({ elements, bitmapFontsLoaded, bindingCtx, updat
     for (const el of elements) {
       if (el.type !== 'text') continue;
 
-      // A fixed-flow element's sizes are authored — the renderer owns nothing
+      // A framed element's sizes are authored — the renderer owns nothing
       // on it, so the hook writes nothing. Skipping the fingerprint too means
-      // a later fixed → auto flip re-measures on its first auto pass.
-      if (el.textFlow === 'fixed') continue;
+      // a later framed → auto flip re-measures on its first auto pass.
+      if (isFramedTextFlow(el.textFlow)) continue;
 
       // Resolve the actual display text — handles plain strings, bindings,
       // expressions, and template interpolation identically to the render path.

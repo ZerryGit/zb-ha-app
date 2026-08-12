@@ -7,7 +7,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { TEXT_RESIZE_ANCHORS, textAnchorAxes, textReserveOverflow } from '../textFrame.js';
+import {
+  TEXT_RESIZE_ANCHORS,
+  textAnchorAxes,
+  textClipHidden,
+  textReserveOverflow,
+} from '../textFrame.js';
 
 describe('TEXT_RESIZE_ANCHORS', () => {
   it('has all eight anchors, including the height-only handles', () => {
@@ -67,5 +72,33 @@ describe('textReserveOverflow', () => {
     // to overflow, so the marker must not draw.
     expect(textReserveOverflow('fixed', 0, 30)).toBe(0);
     expect(textReserveOverflow('fixed', undefined, 30)).toBe(0);
+  });
+
+  it('never reports overflow for a locked box (clip has its own hint)', () => {
+    expect(textReserveOverflow('clip', 20, 100)).toBe(0);
+  });
+});
+
+describe('textClipHidden', () => {
+  it('reports how much content is cut below a locked box', () => {
+    expect(textClipHidden('clip', 40, 58)).toBe(18);
+  });
+
+  it('reports nothing when the content fits inside the box', () => {
+    expect(textClipHidden('clip', 60, 58)).toBe(0);
+    expect(textClipHidden('clip', 58, 58)).toBe(0);
+  });
+
+  it('reports nothing for a degenerate box — it shows all content instead', () => {
+    // Mirrors the server: a locked box with sizeY <= 0 falls back to the
+    // content height rather than clipping everything.
+    expect(textClipHidden('clip', 0, 100)).toBe(0);
+    expect(textClipHidden('clip', undefined, 100)).toBe(0);
+  });
+
+  it('never reports for non-clip modes', () => {
+    expect(textClipHidden('fixed', 40, 100)).toBe(0);
+    expect(textClipHidden('auto', 40, 100)).toBe(0);
+    expect(textClipHidden(undefined, 40, 100)).toBe(0);
   });
 });

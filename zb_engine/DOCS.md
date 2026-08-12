@@ -460,15 +460,18 @@ Fetches state history directly from the HA Supervisor API at render time using
 - All types support: `pos`, `rotationDeg`, `scale`, `origin`, `opacity`, `visible`
 - Drawn in order — first element is the bottom layer.
 
-**Text sizing (`textFlow`)** — a text element's box follows one of two rules:
+**Text sizing (`textFlow`)** — a text element's box follows one of three rules:
 
-- `"auto"` (the default, and every widget made before 0.1.4): the box hugs the
-  text. A longer live value grows the box sideways at render time; it never
-  shrinks.
-- `"fixed"`: you own the width. Lines wrap at `sizeX`, and `sizeY` is a
-  **minimum** height — in the builder the input is labelled "Min height". The
-  rendered box is the larger of `sizeY` and the wrapped content, so text that
-  outgrows its reserve pushes downward instead of being cut off. Setting
+- `"auto"` (every widget made before 0.1.4): the box hugs the text. A longer
+  live value grows the box sideways at render time; it never shrinks.
+- `"clip"` (what a newly added text element uses, at 120×60): you own the
+  whole box. Lines wrap at `sizeX`, and text past `sizeY` is cut off — the
+  box never moves, whatever the value does. The editor hints at hidden text
+  with a dashed line on the box's bottom edge; a `sizeY` of 0 shows the full
+  content instead of hiding everything.
+- `"fixed"` ("Text overflow" ticked in the builder): like `"clip"`, but
+  `sizeY` is a **minimum** height — the input is labelled "Min height" — and
+  text that outgrows it pushes downward instead of being cut off. Setting
   `sizeY` taller than the content reserves room, so a value that gains a line
   later doesn't shift the layout below it. A Min height of 0 means no reserve
   at all — the frame simply hugs its text. Dragging a side handle to change
@@ -476,9 +479,9 @@ Fetches state history directly from the HA Supervisor API at render time using
   width) — set the reserve after the width.
 
 Any other `textFlow` value behaves as `"auto"`. In the builder, dragging a
-resize handle on a text element (or typing a Width/Height) switches it to
-`fixed`; the "Auto width" / "Fixed width" control in the text inspector
-switches back.
+resize handle on a text element (or typing a Width/Height) frames it; the
+"Auto width" / "Fixed width" control in the text inspector switches back, and
+the "Text overflow" toggle picks between the locked box and grow-down.
 
 ---
 

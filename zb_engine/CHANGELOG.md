@@ -20,21 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you add an entry yourself. Everything else is unchanged: with the list empty,
   private addresses are refused exactly as before.
 
-- **Text can now wrap inside a frame you size yourself.** Until now a text box
-  always hugged its content: a longer live value stretched it sideways, ran it
-  off the screen edge, and made centred text drift out of place. Drag any
-  resize handle on a text element — or type a Width or Height — and it becomes
-  a fixed frame: the width you set is where lines wrap, so long values break
-  onto new lines instead of widening the box, and centred or right-aligned
-  text stays put. The height you set is a minimum (the input is labelled
-  "Min height"): set it taller than today's text to reserve room, and a value
-  that gains a line later fills the reserve instead of shifting everything
-  below it. Text that outgrows the reserve pushes downward — it is never cut
-  off — and the editor draws a dashed line across the frame at the Min height
-  so you see the overrun while designing. An "Auto width" / "Fixed width" control in the text
-  inspector switches between the two behaviours; converting at the current
-  size changes nothing visually. Existing widgets are untouched: every text
-  element keeps today's hugging behaviour until you resize it yourself.
+- **Text now lives in a frame you size yourself, and wraps inside it.** Until
+  now a text box always hugged its content: a longer live value stretched it
+  sideways, ran it off the screen edge, and made centred text drift out of
+  place. A new text element starts as a 120×60 frame: type into it and lines
+  break at the right edge, like any text field. The box is locked by default —
+  text that doesn't fit is cut off at the bottom, and the editor hints at the
+  hidden part with a dashed line on the box's bottom edge, so a wild live
+  value can never wreck the layout around it. Tick **"Text overflow"** in the
+  text inspector and the box grows downward instead: its height becomes a
+  minimum (the input is then labelled "Min height") — set it taller than
+  today's text to reserve room, and a value that gains a line later fills the
+  reserve instead of shifting everything below it; when text outgrows the
+  reserve, a dashed line marks where the overrun begins. Dragging any resize
+  handle reshapes the frame with the text re-wrapping live as you drag, and
+  an "Auto width" / "Fixed width" control switches back to the old hugging
+  behaviour. Existing widgets are untouched: every already-saved text element
+  keeps hugging its content until you resize it yourself.
 
 ### Changed
 
@@ -95,13 +97,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A bad entry is skipped, not fatal.** An entry that is not a valid address
   is dropped with a warning in the add-on log and grants nothing; the add-on
   starts normally and the rest of the list still works.
-- **A fixed text frame grows downward and can overlap what sits below it.**
-  Text is never cut off — a value too long for its reserve pushes past the
-  frame's minimum height instead. The editor marks the overrun with a dashed
-  line at the Min height whenever it happens, but the mark reflects the value
-  being previewed: a longer live value on the device can overflow further than
-  what you saw while designing. Leave slack in the Min height if the layout
-  below the frame must never move.
+- **With "Text overflow" ticked, a text frame grows downward and can overlap
+  what sits below it.** In that mode text is never cut off — a value too long
+  for its reserve pushes past the frame's minimum height instead. The editor
+  marks the overrun with a dashed line at the Min height whenever it happens,
+  but the mark reflects the value being previewed: a longer live value on the
+  device can overflow further than what you saw while designing. Leave slack
+  in the Min height if the layout below the frame must never move — or leave
+  "Text overflow" unticked, which locks the box and cuts the text instead.
 
 ## 0.1.3
 

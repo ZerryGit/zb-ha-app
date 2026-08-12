@@ -134,6 +134,21 @@ describe('useAutoSizeText', () => {
     expect(updateElementDerived).not.toHaveBeenCalled();
   });
 
+  it('writes nothing for a locked-box (clip) element either', () => {
+    bitmapFontMocks.fontsReady.mockReturnValue(true);
+    const updateElementDerived = vi.fn();
+
+    renderHook(() => useAutoSizeText({
+      elements: [{ id: 'text_1', type: 'text', text: 'Hello', textFlow: 'clip', sizeX: 120, sizeY: 60 }],
+      bitmapFontsLoaded: true,
+      bindingCtx: {},
+      updateElementDerived,
+    }));
+
+    expect(bitmapFontMocks.layoutTextBounds).not.toHaveBeenCalled();
+    expect(updateElementDerived).not.toHaveBeenCalled();
+  });
+
   it('re-measures on the first auto pass after a fixed -> auto flip', async () => {
     bitmapFontMocks.fontsReady.mockReturnValue(true);
     bitmapFontMocks.layoutTextBounds.mockReturnValue({ text: 'Hello', width: 64, height: 18 });

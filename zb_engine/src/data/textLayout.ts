@@ -45,6 +45,17 @@ export interface TextLayoutFont {
 /** Horizontal/vertical margin added to a measured box so glyphs don't clip. */
 const TEXT_BOX_PADDING = 4;
 
+/**
+ * The two framed text modes — both wrap to the authored `sizeX`; they differ
+ * only in what the caller does with `sizeY` ("fixed" treats it as a minimum
+ * and grows past it, "clip" treats it as the box and lets the renderer cut).
+ * Anything else — including absent, which is every widget saved before
+ * 0.1.4 — means "auto", the shrink-to-fit behaviour.
+ */
+export function isFramedTextFlow(textFlow: unknown): boolean {
+  return textFlow === "fixed" || textFlow === "clip";
+}
+
 // ── Measurement ────────────────────────────────────────────────
 
 /** Cursor advance for one code point, including the inter-glyph spacing. */
@@ -329,7 +340,7 @@ export interface TextLayoutInput {
   font: TextLayoutFont;
   fontSize: number;
   lineHeight: number;
-  /** `"fixed"` wraps to `sizeX`; anything else means `auto` (D4). */
+  /** `"fixed"` and `"clip"` wrap to `sizeX`; anything else means `auto` (D4). */
   textFlow?: unknown;
   /** Authored frame width — only read in `fixed` mode. */
   sizeX?: number;
@@ -342,9 +353,9 @@ export interface TextLayoutResult {
   contentWidth: number;
   contentHeight: number;
   /**
-   * True when `fixed` was requested but the `{{` guard abandoned the rewrite.
-   * The server turns this into a `meta.renderErrors` warning; the builder
-   * ignores it.
+   * True when a framed mode was requested but the `{{` guard abandoned the
+   * rewrite. The server turns this into a `meta.renderErrors` warning; the
+   * builder ignores it.
    */
   wrapSkipped: boolean;
 }
@@ -370,7 +381,7 @@ export function layoutTextElement(input: TextLayoutInput): TextLayoutResult {
     };
   };
 
-  if (input.textFlow !== "fixed") return auto(false);
+  if (!isFramedTextFlow(input.textFlow)) return auto(false);
 
   // Wrapping writes the resolved string back into the element, so the engine
   // would resolve it a second time. A value that itself contains "{{" would be

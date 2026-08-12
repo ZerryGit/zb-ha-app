@@ -24,6 +24,7 @@ import {
   getSizesForFamily,
   getWeightsForFamilySize,
 } from '../utils/fontCatalog.js';
+import { isFramedTextFlow } from '@shared/textLayout';
 
 function CommonFields({ element, updateElement }) {
   const isLine = element.type === 'line';
@@ -33,19 +34,15 @@ function CommonFields({ element, updateElement }) {
   const toggleLock = useUiStore((s) => s.toggleElementLock);
 
   // Typing a size into a text element authors that dimension, which only
-  // holds if the element is fixed-flow — otherwise the auto-size hook
-  // clobbers the typed value on its next pass. Both writes go in ONE
-  // updateElement call: one undo entry, and no window where the hook sees
-  // an auto element with a hand-typed size.
+  // holds if the element is framed — otherwise the auto-size hook clobbers
+  // the typed value on its next pass. An auto element converts to the
+  // default framed mode ('clip', box locked), keeping its hugged sizes as
+  // the box. Both writes go in ONE updateElement call: one undo entry, and
+  // no window where the hook sees an auto element with a hand-typed size.
   const sizePatch = (patch) => {
     if (!isText) return updateElement(element.id, patch);
-    const full = { ...patch, textFlow: 'fixed' };
-    // Converting via the Width input authors width alone — store a 0 minimum
-    // ("no reserve") so the frame hugs its re-wrapped content instead of
-    // pinning today's measured height as a minimum the user never chose.
-    if (element.textFlow !== 'fixed' && full.sizeX !== undefined && full.sizeY === undefined) {
-      full.sizeY = 0;
-    }
+    const full = { ...patch };
+    if (!isFramedTextFlow(element.textFlow)) full.textFlow = 'clip';
     return updateElement(element.id, full);
   };
 
@@ -634,20 +631,20 @@ function TextPanel({ element, updateElement }) {
         </Field>
       </div>
       <div className="field-row">
-        {/* "…width" on both labels because height is elastic in BOTH modes —
-            a fixed frame still grows downward past its minimum. */}
+        {/* "…width" on both labels: with overflow ON the height is elastic,
+            and with it OFF the label still describes the wrap width. */}
         <Field label="Sizing" row>
           <Dropdown
-            value={element.textFlow === 'fixed' ? 'fixed' : 'auto'}
+            value={isFramedTextFlow(element.textFlow) ? 'fixed' : 'auto'}
             onChange={(val) => {
               if (val === 'fixed') {
-                // Bake the current measured width as the authored wrap width
-                // (a visual no-op — auto sizes already hug the content) and
-                // store a 0 minimum: "no reserve", the frame keeps hugging
-                // when the text changes. A reserve is authored deliberately,
-                // by dragging past the text or typing into Min height.
-                const patch = { textFlow: 'fixed', sizeY: 0 };
+                if (isFramedTextFlow(element.textFlow)) return;
+                // Convert to the default framed mode: a locked box (overflow
+                // unticked) at the current measured size — a visual no-op,
+                // since auto sizes already hug the content.
+                const patch = { textFlow: 'clip' };
                 if (typeof element.sizeX === 'number') patch.sizeX = element.sizeX;
+                if (typeof element.sizeY === 'number') patch.sizeY = element.sizeY;
                 updateElement(element.id, patch);
               } else {
                 // Back to hugging: the auto-size hook re-measures on its
@@ -661,6 +658,21 @@ function TextPanel({ element, updateElement }) {
             ]}
           />
         </Field>
+        {isFramedTextFlow(element.textFlow) && (
+          <Field row>
+            <Toggle
+              label="Text overflow"
+              value={element.textFlow === 'fixed'}
+              onChange={(checked) => {
+                // Ticked: the box grows downward past its height (the Height
+                // input becomes "Min height"). Unticked: the box is locked
+                // and text past it is cut, with a dashed hint on the bottom
+                // edge while designing.
+                updateElement(element.id, { textFlow: checked ? 'fixed' : 'clip' });
+              }}
+            />
+          </Field>
+        )}
       </div>
       <FillPanel element={element} updateElement={updateElement} />
     </div>

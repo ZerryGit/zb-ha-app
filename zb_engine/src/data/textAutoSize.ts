@@ -14,6 +14,10 @@
  *         rendered box is max(authored, content), so a value that gains a line
  *         grows downward instead of running off the side.
  *
+ *   clip — the author owns the whole box. Wrap to sizeX exactly as for fixed,
+ *         but leave sizeY alone too: the engine clips at the box, so content
+ *         past it is cut rather than grown into.
+ *
  * The measuring and line breaking both live in `textLayout.ts`, shared with the
  * builder. This module only decides what to do with the numbers — the two trees
  * apply deliberately different clamp policies (grow-only here, exact there).
@@ -25,7 +29,7 @@
 
 import { resolveValue, type DataContext } from "@zb/expressions";
 import { getFontForFamily, fontsReady } from "../engine/fonts/fontManager";
-import { layoutTextElement } from "./textLayout";
+import { isFramedTextFlow, layoutTextElement } from "./textLayout";
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -111,7 +115,16 @@ export async function expandTextBounds(
 
     // A skipped wrap falls all the way through to the auto policy: no rewrite,
     // and the box grows on both axes as it always has.
-    if (el.textFlow === "fixed" && !layout.wrapSkipped) {
+    if (isFramedTextFlow(el.textFlow) && !layout.wrapSkipped) {
+      if (el.textFlow === "clip") {
+        // Locked box: sizeY IS the box and the frozen engine clips at it —
+        // no growth. A degenerate box (sizeY <= 0) falls back to the content
+        // height rather than hiding everything, the same never-hide spirit
+        // as the maxWidth <= 0 guard in the wrap itself.
+        const boxH = currentH > 0 ? currentH : layout.contentHeight;
+        if (layout.text === textStr && boxH === currentH) return el;
+        return { ...el, text: layout.text, sizeY: boxH };
+      }
       const sizeY = Math.max(currentH, layout.contentHeight);
       // Only write the wrapped string when the breaks actually moved. Leaving
       // an unwrapped element's template in place keeps the engine's single

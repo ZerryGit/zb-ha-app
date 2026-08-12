@@ -436,6 +436,18 @@ describe('docStore', () => {
       warn.mockRestore();
     });
 
+    it('updateElementDerived drops BOTH sizes on a locked-box (clip) text element', () => {
+      state().updateElement('e2', { textFlow: 'clip', sizeX: 120, sizeY: 60 });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      state().updateElementDerived('e2', { sizeX: 300, sizeY: 200 });
+
+      const el = state().docs['w1'].doc.elements.find((e) => e.id === 'e2');
+      expect(el.sizeX).toBe(120);
+      expect(el.sizeY).toBe(60);
+      warn.mockRestore();
+    });
+
     it('updateElementDerived drops BOTH sizes on a fixed-flow text element', () => {
       // The allowlist is empty for fixed text: both dimensions are authored,
       // so a leaked derived write would silently eat the user's frame.

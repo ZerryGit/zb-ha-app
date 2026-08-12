@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  isFramedTextFlow,
   measureLineVisual,
   wrapTextToWidth,
   layoutTextElement,
@@ -161,6 +162,21 @@ describe("layoutTextElement", () => {
     for (const textFlow of ["FIXED", "wrap", 1, true, null, undefined, {}]) {
       const result = layoutTextElement({ ...base, text: "aaa bbb", sizeX: 20, textFlow });
       expect(result.text).toBe("aaa bbb");
+    }
+  });
+
+  it("wraps identically for both framed modes (clip differs only at the caller)", () => {
+    const fixed = layoutTextElement({ ...base, text: "aaa bbb", sizeX: 30, textFlow: "fixed" });
+    const clip = layoutTextElement({ ...base, text: "aaa bbb", sizeX: 30, textFlow: "clip" });
+    expect(clip).toEqual(fixed);
+    expect(clip.text).toContain("\n");
+  });
+
+  it("isFramedTextFlow accepts exactly the two framed values", () => {
+    expect(isFramedTextFlow("fixed")).toBe(true);
+    expect(isFramedTextFlow("clip")).toBe(true);
+    for (const value of ["auto", "FIXED", "CLIP", 1, true, null, undefined, {}]) {
+      expect(isFramedTextFlow(value)).toBe(false);
     }
   });
 

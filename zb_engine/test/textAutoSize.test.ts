@@ -301,3 +301,65 @@ describe("expandTextBounds — fixed frames", () => {
     expect(errors).toHaveLength(0);
   });
 });
+
+describe("expandTextBounds — locked boxes (clip)", () => {
+  /** Same frame as the fixed cases, but the box is locked. */
+  function clipText(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      type: "text",
+      text: "alpha bravo charlie delta echo",
+      sizeX: 90,
+      sizeY: 30,
+      fontSize: 20,
+      fontWeight: 400,
+      fontFamily: "Sora",
+      lineHeight: 1.2,
+      textFlow: "clip",
+      ...overrides,
+    };
+  }
+
+  it("wraps the value exactly like a fixed frame", async () => {
+    const result = await expand([clipText()], makeCtx());
+    const text = String(result[0].text);
+    expect(text).toContain("\n");
+    expect(text.split("\n").join(" ")).toBe("alpha bravo charlie delta echo");
+  });
+
+  it("never grows the box — the engine clips at sizeY", async () => {
+    // The same content grows a fixed frame past 30; a locked box stays put.
+    const result = await expand([clipText()], makeCtx());
+    expect(result[0].sizeX).toBe(90);
+    expect(result[0].sizeY).toBe(30);
+  });
+
+  it("keeps a box taller than the content", async () => {
+    const result = await expand([clipText({ text: "hi", sizeY: 400 })], makeCtx());
+    expect(result[0].sizeY).toBe(400);
+  });
+
+  it("falls back to the content height for a degenerate box (sizeY <= 0)", async () => {
+    // A locked box with no height would clip everything; degrade to showing
+    // the content instead of hiding it, like the maxWidth <= 0 wrap guard.
+    const result = await expand([clipText({ sizeY: 0 })], makeCtx());
+    expect(result[0].sizeY as number).toBeGreaterThan(0);
+  });
+
+  it("leaves a fitting element alone (same no-op contract as fixed)", async () => {
+    const element = clipText({ text: "hi" });
+    const result = await expand([element], makeCtx());
+    expect(result[0]).toBe(element);
+  });
+
+  it("falls back to auto (with one warning) when the resolved value contains a binding token", async () => {
+    const ctx = makeCtx({
+      s: { v: "a {{features.secret}} b" },
+      features: { secret: "leaked" },
+    });
+    const element = clipText({ text: { $: "s.v" }, sizeX: 5 });
+    const { elements: result, errors } = await expandTextBounds([element], ctx);
+    expect(result[0].text).toEqual({ $: "s.v" });
+    expect(JSON.stringify(result[0])).not.toContain("leaked");
+    expect(errors).toHaveLength(1);
+  });
+});

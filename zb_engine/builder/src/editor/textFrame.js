@@ -67,3 +67,23 @@ export function textReserveOverflow(textFlow, authoredSizeY, contentHeight) {
   const content = Number(contentHeight) || 0;
   return Math.max(0, content - reserve);
 }
+
+/**
+ * How much of a locked-box ('clip') text element's wrapped content is hidden
+ * below its box, in pixels. Only a clip element with a real box height cuts
+ * anything — a degenerate box (<= 0) falls back to showing all content, the
+ * same rule the server pass applies — so everything else returns 0 and the
+ * clip hint never draws for it.
+ *
+ * @param {unknown} textFlow - the element's `textFlow` value
+ * @param {number} authoredSizeY - resolved box height
+ * @param {number} contentHeight - measured height of the wrapped content
+ * @returns {number} pixels of content hidden below the box (0 when none)
+ */
+export function textClipHidden(textFlow, authoredSizeY, contentHeight) {
+  if (textFlow !== 'clip') return 0;
+  const box = Number(authoredSizeY) || 0;
+  if (box <= 0) return 0;
+  const content = Number(contentHeight) || 0;
+  return Math.max(0, content - box);
+}

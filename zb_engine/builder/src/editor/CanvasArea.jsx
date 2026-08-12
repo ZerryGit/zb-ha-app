@@ -32,7 +32,13 @@ import { resolveAssetSrc } from '../utils/assetSrc.js';
 import { resolveDisplayText, useAutoSizeText } from './useAutoSizeText.js';
 import { useAutoFetchSources } from './useAutoFetchSources.js';
 import { layoutTextBounds } from '../utils/bitmapFont.js';
-import { TEXT_RESIZE_ANCHORS, textAnchorAxes, textReserveOverflow } from './textFrame.js';
+import { isFramedTextFlow } from '@shared/textLayout';
+import {
+  TEXT_RESIZE_ANCHORS,
+  textAnchorAxes,
+  textClipHidden,
+  textReserveOverflow,
+} from './textFrame.js';
 
 /** How fast zooming with the wheel feels. */
 const ZOOM_SENSITIVITY = 1.05;
@@ -133,18 +139,18 @@ export default function CanvasArea() {
   useAutoSizeText({ elements, bitmapFontsLoaded, bindingCtx, updateElementDerived });
   useAutoFetchSources(sources);
 
-  // Wrapped layout for every fixed-flow text element, keyed by element id.
-  // Computed at render time and never written to the store: the display box
-  // is max(authored sizeY, content height), and the overflow past the
-  // authored minimum drives the dashed overflow band. The line breaks come
-  // from the same shared module the server pre-render pass runs, so the
-  // canvas preview and the device wrap identically for the same input —
-  // though a longer live value can still overflow further on the device.
+  // Wrapped layout for every framed (fixed/clip) text element, keyed by
+  // element id. Computed at render time and never written to the store: it
+  // drives the display box, the overflow marker ('fixed') and the clip hint
+  // ('clip'). The line breaks come from the same shared module the server
+  // pre-render pass runs, so the canvas preview and the device wrap
+  // identically for the same input — though a longer live value can still
+  // overflow or clip further on the device.
   const fixedTextLayouts = useMemo(() => {
     const layouts = {};
     if (!bitmapFontsLoaded) return layouts;
     for (const el of elements ?? []) {
-      if (el.type !== 'text' || el.textFlow !== 'fixed') continue;
+      if (el.type !== 'text' || !isFramedTextFlow(el.textFlow)) continue;
       const displayText = resolveDisplayText(el.text, el.fallbackText, bindingCtx);
       // The server leaves an empty text element untouched (no wrap, no grow) —
       // measuring '' as one line here would show a display box and overflow
@@ -156,7 +162,7 @@ export default function CanvasArea() {
         fontWeight: el.fontWeight ?? 400,
         fontFamily: el.fontFamily ?? 'Sora',
         lineHeight: el.lineHeight ?? 1.2,
-        textFlow: 'fixed',
+        textFlow: el.textFlow,
         sizeX: resolveNumeric(el.sizeX, 0, bindingCtx),
       });
       if (layout) layouts[el.id] = layout;
@@ -190,6 +196,13 @@ export default function CanvasArea() {
   // "teleports" on mouse-up. Hide every band while a gesture is in progress,
   // like the snap guides; it reappears at the committed position.
   const [suppressOverflowBands, setSuppressOverflowBands] = useState(false);
+
+  // Live box of the text element currently being resized ({id, width,
+  // height}), updated per transform event so the text re-wraps WHILE the
+  // handle moves instead of only on release. The node's transform scale is
+  // flattened into these dims in the onTransform handler; committed sizes
+  // still come from handleTransformEnd.
+  const [liveTextFrame, setLiveTextFrame] = useState(null);
 
   // Resolved themed colours for the artboard (Konva can't read CSS variables).
   // Read once on mount — the builder is dark-only, so they never change.
@@ -822,17 +835,18 @@ export default function CanvasArea() {
 
         // Height floors apply only to gestures that AUTHOR height (corners,
         // top/bottom-center). A side handle authors width alone — its box
-        // height is whatever snapping did to it, and the frame re-wraps on
-        // release — so constraining it would only block legitimate narrowing
-        // of an overflowing frame.
+        // height is whatever snapping did to it — so constraining it would
+        // only block legitimate narrowing.
         if (textAnchorAxes(activeAnchorRef.current).height) {
           let minH =
             (Math.round((selEl.fontSize ?? 14) * (selEl.lineHeight ?? 1.2)) + 4) * z;
-          if (newBox.height < oldBox.height) {
+          // Grow mode ('fixed') cannot render a box shorter than its content,
+          // so its drag stops at the last text line. A locked box ('clip' —
+          // and an auto element converting, since clip is the conversion
+          // default) is ALLOWED below the content: cutting is the point.
+          if (selEl.textFlow === 'fixed' && newBox.height < oldBox.height) {
             const displayText = resolveDisplayText(selEl.text, selEl.fallbackText, bindingCtx);
             if (displayText) {
-              // Wrap as 'fixed' whatever the current mode: releasing any resize
-              // handle converts the element to fixed at the dragged sizes.
               const layout = layoutTextBounds({
                 text: displayText,
                 fontSize: selEl.fontSize ?? 14,
@@ -856,6 +870,7 @@ export default function CanvasArea() {
 
   const handleTransformEnd = useCallback(() => {
     setSuppressOverflowBands(false);
+    setLiveTextFrame(null);
     const anchorName = activeAnchorRef.current;
     activeAnchorRef.current = null;
     const node = shapeRefs.current[selectedElementId];
@@ -915,44 +930,49 @@ export default function CanvasArea() {
     if (isText) {
       // D2: a gesture authors only the sizes its handle owns — width from a
       // side handle, height from a vertical handle, both from a corner.
-      // Writing the untouched axis would bake the stale display height as the
-      // authored minimum: narrow via a side handle, the content re-wraps
-      // taller, and the Min-height marker strands mid-text.
+      // An auto element converts to the default framed mode ('clip', box
+      // locked); an already-framed element keeps its mode.
       const axes = textAnchorAxes(anchorName);
+      const mode = isFramedTextFlow(element.textFlow) ? element.textFlow : 'clip';
       const patch = {
         pos: { x: newX, y: newY },
         rotationDeg: newRotation,
         scale: { x: 1, y: 1 },
-        textFlow: 'fixed',
+        textFlow: mode,
       };
       if (axes.width) patch.sizeX = newSizeX;
       if (axes.height) {
-        // A drag that lands snug against the text means "no reserve": store a
-        // 0 minimum so the frame keeps hugging when the text later changes —
-        // otherwise today's content height gets pinned as a minimum the user
-        // never chose. With snapping on, the lowest landing the content floor
-        // accepts can sit up to one grid step above the text, so that still
-        // counts as snug. Dragging clearly past the text authors a reserve.
-        const displayText = resolveDisplayText(element.text, element.fallbackText, bindingCtx);
-        const layout = displayText
-          ? layoutTextBounds({
-              text: displayText,
-              fontSize: element.fontSize ?? 14,
-              fontWeight: element.fontWeight ?? 400,
-              fontFamily: element.fontFamily ?? 'Sora',
-              lineHeight: element.lineHeight ?? 1.2,
-              textFlow: 'fixed',
-              sizeX: newSizeX,
-            })
-          : null;
-        const hugSlack = snapping.snapEnabled ? snapping.gridStep : 1.5;
-        patch.sizeY = layout && newSizeY <= layout.height + hugSlack ? 0 : newSizeY;
-      } else if (axes.width) {
-        // Width-only gesture: reset the minimum to 0 (hug). A Min height was
-        // chosen against the OLD wrap width — after a re-wrap it is a stale
-        // number, and keeping it leaves the overflow marker stranded at the
-        // old box bottom. Reserve space at the new width by dragging past the
-        // text or typing into "Min height" afterwards.
+        if (mode === 'fixed') {
+          // Grow mode: a drag that lands snug against the text means "no
+          // reserve" — store a 0 minimum so the frame keeps hugging when the
+          // text later changes. With snapping on, the lowest landing the
+          // content floor accepts can sit up to one grid step above the
+          // text, so that still counts as snug. Dragging clearly past the
+          // text authors a reserve.
+          const displayText = resolveDisplayText(element.text, element.fallbackText, bindingCtx);
+          const layout = displayText
+            ? layoutTextBounds({
+                text: displayText,
+                fontSize: element.fontSize ?? 14,
+                fontWeight: element.fontWeight ?? 400,
+                fontFamily: element.fontFamily ?? 'Sora',
+                lineHeight: element.lineHeight ?? 1.2,
+                textFlow: 'fixed',
+                sizeX: newSizeX,
+              })
+            : null;
+          const hugSlack = snapping.snapEnabled ? snapping.gridStep : 1.5;
+          patch.sizeY = layout && newSizeY <= layout.height + hugSlack ? 0 : newSizeY;
+        } else {
+          // Locked box: the dragged height IS the box.
+          patch.sizeY = newSizeY;
+        }
+      } else if (axes.width && mode === 'fixed') {
+        // Width-only gesture in grow mode: reset the minimum to 0 (hug). A
+        // Min height was chosen against the OLD wrap width — after a re-wrap
+        // it is a stale number, and keeping it leaves the overflow marker
+        // stranded at the old box bottom. A locked box keeps its height:
+        // narrowing it clips more, which is the mode's contract.
         patch.sizeY = 0;
       }
       updateElement(element.id, patch);
@@ -1367,14 +1387,45 @@ export default function CanvasArea() {
               }
 
               if (element.type === 'text') {
-                // A fixed-flow element renders its pre-wrapped string in a
-                // display box of max(authored minimum, content height) — the
-                // grown height is never stored, and a minimum of 0 means "no
-                // reserve, hug the content". An auto element (no layout
-                // entry) keeps today's path untouched.
-                const layout = fixedTextLayouts[element.id];
+                // Display box, computed at render time and never stored:
+                //   fixed — max(authored minimum, content); a minimum of 0
+                //           means "no reserve, hug the content".
+                //   clip  — the authored box itself (a degenerate box <= 0
+                //           falls back to the content, like the server).
+                //   auto  — the hook-maintained sizes, untouched.
+                // While a resize handle is moving, the live dragged box wins
+                // and the text is re-wrapped at the live width per event.
+                const live = liveTextFrame?.id === element.id ? liveTextFrame : null;
+                const framed = isFramedTextFlow(element.textFlow);
+                const frameW = live
+                  ? live.width
+                  : resolveNumeric(element.sizeX, 0, bindingCtx);
+                let layout = framed ? fixedTextLayouts[element.id] : null;
+                if (live) {
+                  const displayText = resolveDisplayText(element.text, element.fallbackText, bindingCtx);
+                  layout = displayText
+                    ? layoutTextBounds({
+                        text: displayText,
+                        fontSize: element.fontSize ?? 14,
+                        fontWeight: element.fontWeight ?? 400,
+                        fontFamily: element.fontFamily ?? 'Sora',
+                        lineHeight: element.lineHeight ?? 1.2,
+                        textFlow: 'clip',
+                        sizeX: frameW,
+                      })
+                    : null;
+                }
                 const authoredH = resolveNumeric(element.sizeY, 0, bindingCtx);
-                let displayH = layout ? Math.max(authoredH, layout.height) : authoredH;
+                let displayH;
+                if (live) {
+                  displayH = live.height;
+                } else if (element.textFlow === 'clip') {
+                  displayH = authoredH > 0 ? authoredH : (layout?.height ?? 0);
+                } else if (framed) {
+                  displayH = layout ? Math.max(authoredH, layout.height) : authoredH;
+                } else {
+                  displayH = authoredH;
+                }
                 // An empty hugging frame would collapse to zero height and
                 // become unselectable on the canvas — keep one line of hit area.
                 if (!(displayH > 0)) {
@@ -1385,7 +1436,21 @@ export default function CanvasArea() {
                   <BitmapText
                     key={element.id}
                     {...getCommonNodeProps(element)}
-                    width={resolveNumeric(element.sizeX, 0, bindingCtx)}
+                    onTransform={(e) => {
+                      // Flatten the transformer's scale into the box per move
+                      // so glyphs never stretch, and let React re-wrap the
+                      // text at the live width. Rotation never scales.
+                      if (activeAnchorRef.current === 'rotater') return;
+                      const node = e.target;
+                      const w = Math.max(1, node.width() * node.scaleX());
+                      const h = Math.max(1, node.height() * node.scaleY());
+                      node.scaleX(1);
+                      node.scaleY(1);
+                      node.width(w);
+                      node.height(h);
+                      setLiveTextFrame({ id: element.id, width: w, height: h });
+                    }}
+                    width={frameW}
                     height={displayH}
                     text={layout
                       ? layout.text
@@ -1580,22 +1645,26 @@ export default function CanvasArea() {
               });
             })()}
 
-          {/* Overflow marker — a fixed-flow text element whose wrapped content
-              runs past its authored minimum height gets a dashed line across
-              the frame at that minimum, drawn whether or not the element is
-              selected (grow-down is decided server-side against live data, so
-              the author must see it without hunting for it). Text below the
-              line is the overrun. A line, not a box: a closed rect next to an
-              unselected element read as a stray spawned object (owner call,
-              2026-08-12). The line IS the authored-minimum marker — no second
-              indicator. Nothing here is stored; it is a draw over two numbers
-              the render already has. */}
+          {/* Framed-text indicator — one dashed line across the frame at the
+              authored height, drawn whether or not the element is selected:
+              - 'fixed': the overflow marker. Content past the declared
+                minimum grows the box downward; the line sits at that minimum
+                and text below it is the overrun.
+              - 'clip': the clip hint. The line coincides with the locked
+                box's bottom edge whenever wrapped content is cut below it,
+                so hidden text leaves a visible trace while designing.
+              A line, not a box: a closed rect next to an unselected element
+              read as a stray spawned object (owner call, 2026-08-12).
+              Nothing here is stored; it is a draw over two numbers the
+              render already has. */}
           {!suppressOverflowBands && elements?.map((element) => {
             if (element.type !== 'text') return null;
             const layout = fixedTextLayouts[element.id];
             if (!layout) return null;
             const authoredH = resolveNumeric(element.sizeY, 0, bindingCtx);
-            const overflow = textReserveOverflow(element.textFlow, authoredH, layout.height);
+            const overflow = element.textFlow === 'clip'
+              ? textClipHidden(element.textFlow, authoredH, layout.height)
+              : textReserveOverflow(element.textFlow, authoredH, layout.height);
             if (overflow <= 0) return null;
             if (!resolveVisibilityValue(element.visible, bindingCtx, true)) return null;
             return (

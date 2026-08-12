@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer';
 
 import { createNewDocument, gridSizeToSize, normalizeGridSize, REF_COLS, REF_ROWS } from '../models/document.js';
 import { createElement } from '../models/elementDefaults.js';
+import { isFramedTextFlow } from '@shared/textLayout';
 import { createNameGeneratorFromElements, importRuntimeJson, mergeInheritedSources } from '../models/mapper.js';
 import { getDisplayConfig } from './displayConfigStore.js';
 import { createId } from '../utils/ids.js';
@@ -640,9 +641,9 @@ export const useDocStore = create(
      *
      * Allowlist (per Task 7; narrowed by the text-frame work):
      *   - auto-flow text elements: `sizeX`, `sizeY`
-     *   - fixed-flow text elements: nothing — both sizes are authored, so
-     *     the renderer owns no field on them; the grown display box is
-     *     computed where the element renders and never stored
+     *   - framed (fixed/clip) text elements: nothing — both sizes are
+     *     authored, so the renderer owns no field on them; the display box
+     *     is computed where the element renders and never stored
      *
      * Auto-driven hooks (e.g. `useAutoSizeText`) MUST use this mutation.
      * Treating measured bounds as authored content corrupts undo and
@@ -656,7 +657,7 @@ export const useDocStore = create(
         const element = entry.doc.elements.find((e) => e?.id === id);
         if (!element) return;
 
-        const allowed = element.type === 'text' && element.textFlow !== 'fixed'
+        const allowed = element.type === 'text' && !isFramedTextFlow(element.textFlow)
           ? new Set(['sizeX', 'sizeY'])
           : new Set();
 
