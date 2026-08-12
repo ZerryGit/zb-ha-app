@@ -801,21 +801,45 @@ export default function CanvasArea() {
         }
       }
 
-      // Floor a text-frame drag at ~8 px wide and one line tall so a handle
-      // drag cannot produce a degenerate frame (the render's maxWidth <= 0
-      // guard still backstops anything that slips through).
+      // Text-frame drag floors. Width: ~8 px so a drag cannot produce a
+      // degenerate frame (the render's maxWidth <= 0 guard still backstops).
+      // Height: a fixed frame renders at max(authored minimum, content) and
+      // never clips, so a handle dragged below the last text line would only
+      // snap back on release and strand the Min-height marker mid-text.
+      // When a drag is REDUCING height, floor it at the content height
+      // re-wrapped live at the proposed width — the handle stops where the
+      // box actually stops. A reserve below the current preview content can
+      // still be authored by typing into "Min height".
       const selEl = elements?.find((el) => el.id === selectedElementId);
       if (selEl?.type === 'text') {
         const minW = 8 * z;
-        const minH =
+        if (newBox.width < minW) return oldBox;
+
+        let minH =
           (Math.round((selEl.fontSize ?? 14) * (selEl.lineHeight ?? 1.2)) + 4) * z;
-        if (newBox.width < minW) newBox.width = minW;
-        if (newBox.height < minH) newBox.height = minH;
+        if (newBox.height < oldBox.height) {
+          const displayText = resolveDisplayText(selEl.text, selEl.fallbackText, bindingCtx);
+          if (displayText) {
+            // Wrap as 'fixed' whatever the current mode: releasing any resize
+            // handle converts the element to fixed at the dragged sizes.
+            const layout = layoutTextBounds({
+              text: displayText,
+              fontSize: selEl.fontSize ?? 14,
+              fontWeight: selEl.fontWeight ?? 400,
+              fontFamily: selEl.fontFamily ?? 'Sora',
+              lineHeight: selEl.lineHeight ?? 1.2,
+              textFlow: 'fixed',
+              sizeX: newBox.width / z,
+            });
+            if (layout) minH = Math.max(minH, layout.height * z);
+          }
+        }
+        if (newBox.height < minH) return oldBox;
       }
 
       return newBox;
     },
-    [snapping, selectedElementId, elements, guides],
+    [snapping, selectedElementId, elements, guides, bindingCtx],
   );
 
   const handleTransformEnd = useCallback(() => {
