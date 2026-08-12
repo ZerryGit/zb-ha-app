@@ -470,7 +470,8 @@ Fetches state history directly from the HA Supervisor API at render time using
   rendered box is the larger of `sizeY` and the wrapped content, so text that
   outgrows its reserve pushes downward instead of being cut off. Setting
   `sizeY` taller than the content reserves room, so a value that gains a line
-  later doesn't shift the layout below it.
+  later doesn't shift the layout below it. A Min height of 0 means no reserve
+  at all — the frame simply hugs its text.
 
 Any other `textFlow` value behaves as `"auto"`. In the builder, dragging a
 resize handle on a text element (or typing a Width/Height) switches it to

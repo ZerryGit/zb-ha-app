@@ -45,39 +45,39 @@ export function textAnchorAxes(anchorName) {
 
 /**
  * The Min height to write after a width-only drag, or undefined to keep the
- * stored value. A frame that was HUGGING its content (auto mode, or a fixed
- * minimum within a pixel of the content height) keeps hugging at the new
- * width — otherwise narrowing a frame re-wraps the text taller than a
- * minimum the user never chose and strands the overflow marker mid-text. A
- * deliberate reserve (or deficit) is preserved: the marker reporting content
- * past a CHOSEN minimum is the feature working.
+ * stored value. A frame with no declared reserve hugs its content, and
+ * "no reserve" is stored as a minimum of 0 — so an auto conversion returns 0,
+ * and a legacy hugging minimum (within a pixel of the content at the old
+ * width, from before 0 meant hug) is converted to 0. A deliberate reserve or
+ * deficit is preserved: the overflow marker reporting content past a CHOSEN
+ * minimum is the feature working.
  *
  * @param {object} opts
  * @param {unknown} opts.textFlow - current mode; anything but "fixed" hugs by construction
  * @param {unknown} opts.sizeY - stored minimum height
  * @param {number|undefined} opts.oldContentHeight - wrapped content height at the old width
- * @param {number|undefined} opts.newContentHeight - wrapped content height at the new width
- * @returns {number|undefined} the minimum to write, or undefined to leave it alone
+ * @returns {number|undefined} the minimum to write (0 = hug), or undefined to leave it alone
  */
-export function minHeightAfterWidthDrag({ textFlow, sizeY, oldContentHeight, newContentHeight }) {
-  if (typeof newContentHeight !== 'number') return undefined;
-  if (textFlow === 'fixed') {
-    if (typeof oldContentHeight !== 'number') return undefined;
-    const stored = Number(sizeY);
-    if (!Number.isFinite(stored) || Math.abs(stored - oldContentHeight) > 1) return undefined;
-  }
-  return newContentHeight;
+export function minHeightAfterWidthDrag({ textFlow, sizeY, oldContentHeight }) {
+  if (textFlow !== 'fixed') return 0;
+  const stored = Number(sizeY);
+  // Already hugging (0/absent), or not a plain number (a bound size): keep.
+  if (!Number.isFinite(stored) || stored <= 0) return undefined;
+  if (typeof oldContentHeight !== 'number') return undefined;
+  return Math.abs(stored - oldContentHeight) <= 1 ? 0 : undefined;
 }
 
 /**
  * How far a text element's wrapped content runs past its authored minimum
- * height, in pixels. Only a fixed-flow element has a reserve to exceed;
- * anything else — auto, absent, or a garbage value — returns 0 (readers
- * coerce defensively: not exactly "fixed" means auto).
+ * height, in pixels. Only a fixed-flow element with a DECLARED reserve
+ * (minimum > 0) has anything to exceed — auto elements, garbage values
+ * (readers coerce defensively: not exactly "fixed" means auto), and hugging
+ * frames (minimum 0/absent = "no reserve") all return 0, so the overflow
+ * marker never draws for them.
  *
- * The canvas draws the overflow band over exactly this region, and the
- * element's display box is `authored + overflow` = max(authored, content).
- * Both are computed at render time and never written to the store.
+ * The canvas draws the overflow marker at the top of exactly this region;
+ * the element's display box is max(authored, content). Both are computed at
+ * render time and never written to the store.
  *
  * @param {unknown} textFlow - the element's `textFlow` value
  * @param {number} authoredSizeY - resolved authored minimum height
@@ -87,6 +87,7 @@ export function minHeightAfterWidthDrag({ textFlow, sizeY, oldContentHeight, new
 export function textReserveOverflow(textFlow, authoredSizeY, contentHeight) {
   if (textFlow !== 'fixed') return 0;
   const reserve = Number(authoredSizeY) || 0;
+  if (reserve <= 0) return 0;
   const content = Number(contentHeight) || 0;
   return Math.max(0, content - reserve);
 }

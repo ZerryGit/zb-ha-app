@@ -931,12 +931,15 @@ export default function CanvasArea() {
         textFlow: 'fixed',
       };
       if (axes.width) patch.sizeX = newSizeX;
-      if (axes.height) patch.sizeY = newSizeY;
-      if (axes.width && !axes.height) {
-        // Width-only gesture: a frame that was hugging its content keeps
-        // hugging at the new width; a deliberate reserve stays untouched.
+      if (axes.height) {
+        // A drag that lands snug against the text means "no reserve": store a
+        // 0 minimum so the frame keeps hugging when the text later changes —
+        // otherwise today's content height gets pinned as a minimum the user
+        // never chose. With snapping on, the lowest landing the content floor
+        // accepts can sit up to one grid step above the text, so that still
+        // counts as snug. Dragging clearly past the text authors a reserve.
         const displayText = resolveDisplayText(element.text, element.fallbackText, bindingCtx);
-        const newLayout = displayText
+        const layout = displayText
           ? layoutTextBounds({
               text: displayText,
               fontSize: element.fontSize ?? 14,
@@ -947,11 +950,16 @@ export default function CanvasArea() {
               sizeX: newSizeX,
             })
           : null;
+        const hugSlack = snapping.snapEnabled ? snapping.gridStep : 1.5;
+        patch.sizeY = layout && newSizeY <= layout.height + hugSlack ? 0 : newSizeY;
+      } else if (axes.width) {
+        // Width-only gesture: an auto conversion, or a legacy hugging minimum
+        // (≈ content at the old width), becomes 0 = keep hugging; a deliberate
+        // reserve stays untouched.
         const followed = minHeightAfterWidthDrag({
           textFlow: element.textFlow,
           sizeY: element.sizeY,
           oldContentHeight: fixedTextLayouts[element.id]?.height,
-          newContentHeight: newLayout?.height,
         });
         if (typeof followed === 'number') patch.sizeY = followed;
       }
@@ -1368,20 +1376,25 @@ export default function CanvasArea() {
 
               if (element.type === 'text') {
                 // A fixed-flow element renders its pre-wrapped string in a
-                // display box of max(authored sizeY, content height) — the
-                // grown height is never stored. An auto element (no layout
+                // display box of max(authored minimum, content height) — the
+                // grown height is never stored, and a minimum of 0 means "no
+                // reserve, hug the content". An auto element (no layout
                 // entry) keeps today's path untouched.
                 const layout = fixedTextLayouts[element.id];
                 const authoredH = resolveNumeric(element.sizeY, 0, bindingCtx);
-                const overflow = layout
-                  ? textReserveOverflow(element.textFlow, authoredH, layout.height)
-                  : 0;
+                let displayH = layout ? Math.max(authoredH, layout.height) : authoredH;
+                // An empty hugging frame would collapse to zero height and
+                // become unselectable on the canvas — keep one line of hit area.
+                if (!(displayH > 0)) {
+                  displayH =
+                    Math.round((element.fontSize ?? 14) * (element.lineHeight ?? 1.2)) + 4;
+                }
                 return (
                   <BitmapText
                     key={element.id}
                     {...getCommonNodeProps(element)}
                     width={resolveNumeric(element.sizeX, 0, bindingCtx)}
-                    height={authoredH + overflow}
+                    height={displayH}
                     text={layout
                       ? layout.text
                       : resolveDisplayText(element.text, element.fallbackText, bindingCtx)}

@@ -37,8 +37,17 @@ function CommonFields({ element, updateElement }) {
   // clobbers the typed value on its next pass. Both writes go in ONE
   // updateElement call: one undo entry, and no window where the hook sees
   // an auto element with a hand-typed size.
-  const sizePatch = (patch) =>
-    updateElement(element.id, isText ? { ...patch, textFlow: 'fixed' } : patch);
+  const sizePatch = (patch) => {
+    if (!isText) return updateElement(element.id, patch);
+    const full = { ...patch, textFlow: 'fixed' };
+    // Converting via the Width input authors width alone — store a 0 minimum
+    // ("no reserve") so the frame hugs its re-wrapped content instead of
+    // pinning today's measured height as a minimum the user never chose.
+    if (element.textFlow !== 'fixed' && full.sizeX !== undefined && full.sizeY === undefined) {
+      full.sizeY = 0;
+    }
+    return updateElement(element.id, full);
+  };
 
   return (
     <div className="field-stack">
@@ -632,14 +641,13 @@ function TextPanel({ element, updateElement }) {
             value={element.textFlow === 'fixed' ? 'fixed' : 'auto'}
             onChange={(val) => {
               if (val === 'fixed') {
-                // Bake the current measured box as the authored one, so
-                // converting at the current size is a visual no-op. The
-                // sizes are already in the doc (the auto-size hook keeps
-                // them current); writing them here makes them authored in
-                // the same undo entry as the mode flip.
-                const patch = { textFlow: 'fixed' };
+                // Bake the current measured width as the authored wrap width
+                // (a visual no-op — auto sizes already hug the content) and
+                // store a 0 minimum: "no reserve", the frame keeps hugging
+                // when the text changes. A reserve is authored deliberately,
+                // by dragging past the text or typing into Min height.
+                const patch = { textFlow: 'fixed', sizeY: 0 };
                 if (typeof element.sizeX === 'number') patch.sizeX = element.sizeX;
-                if (typeof element.sizeY === 'number') patch.sizeY = element.sizeY;
                 updateElement(element.id, patch);
               } else {
                 // Back to hugging: the auto-size hook re-measures on its

@@ -48,42 +48,48 @@ describe('textAnchorAxes', () => {
 });
 
 describe('minHeightAfterWidthDrag', () => {
-  it('keeps an auto frame hugging at the new width', () => {
+  it('converts an auto element with no declared reserve (0 = hug)', () => {
     expect(minHeightAfterWidthDrag({
-      textFlow: 'auto', sizeY: 40, oldContentHeight: 40, newContentHeight: 96,
-    })).toBe(96);
+      textFlow: 'auto', sizeY: 40, oldContentHeight: 40,
+    })).toBe(0);
   });
 
-  it('keeps a hugging fixed frame hugging (within the one-pixel write threshold)', () => {
+  it('converts a legacy hugging minimum (≈ old content height) to 0', () => {
     expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 40.6, oldContentHeight: 40, newContentHeight: 96,
-    })).toBe(96);
+      textFlow: 'fixed', sizeY: 40.6, oldContentHeight: 40,
+    })).toBe(0);
+  });
+
+  it('keeps an already-hugging minimum (0/absent) untouched', () => {
+    expect(minHeightAfterWidthDrag({
+      textFlow: 'fixed', sizeY: 0, oldContentHeight: 40,
+    })).toBeUndefined();
+    expect(minHeightAfterWidthDrag({
+      textFlow: 'fixed', sizeY: undefined, oldContentHeight: 40,
+    })).toBeUndefined();
   });
 
   it('preserves a deliberate reserve taller than the content', () => {
     expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 300, oldContentHeight: 200, newContentHeight: 250,
+      textFlow: 'fixed', sizeY: 300, oldContentHeight: 200,
     })).toBeUndefined();
   });
 
   it('preserves an existing deficit (minimum already below content)', () => {
     expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 100, oldContentHeight: 200, newContentHeight: 250,
+      textFlow: 'fixed', sizeY: 100, oldContentHeight: 200,
     })).toBeUndefined();
   });
 
-  it('leaves the minimum alone when either content height is unknown', () => {
+  it('leaves the minimum alone when the old content height is unknown', () => {
     expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 40, oldContentHeight: undefined, newContentHeight: 96,
-    })).toBeUndefined();
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 40, oldContentHeight: 40, newContentHeight: undefined,
+      textFlow: 'fixed', sizeY: 40, oldContentHeight: undefined,
     })).toBeUndefined();
   });
 
   it('treats a non-numeric stored minimum as not hugging', () => {
     expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: { $: 'src.h' }, oldContentHeight: 40, newContentHeight: 96,
+      textFlow: 'fixed', sizeY: { $: 'src.h' }, oldContentHeight: 40,
     })).toBeUndefined();
   });
 });
@@ -108,7 +114,10 @@ describe('textReserveOverflow', () => {
     expect(textReserveOverflow(42, 10, 999)).toBe(0);
   });
 
-  it('treats a missing reserve as zero rather than NaN', () => {
-    expect(textReserveOverflow('fixed', undefined, 30)).toBe(30);
+  it('never reports overflow without a declared reserve (0/absent = hug)', () => {
+    // A minimum of 0 means "no reserve, hug the content" — there is nothing
+    // to overflow, so the marker must not draw.
+    expect(textReserveOverflow('fixed', 0, 30)).toBe(0);
+    expect(textReserveOverflow('fixed', undefined, 30)).toBe(0);
   });
 });
