@@ -478,10 +478,12 @@ Fetches state history directly from the HA Supervisor API at render time using
   the width resets Min height to 0 (the old number belonged to the old wrap
   width) — set the reserve after the width.
 
-Any other `textFlow` value behaves as `"auto"`. In the builder, dragging a
-resize handle on a text element (or typing a Width/Height) frames it; the
-"Auto width" / "Fixed width" control in the text inspector switches back, and
-the "Text overflow" toggle picks between the locked box and grow-down.
+Any other `textFlow` value behaves as `"auto"`. In the builder every text
+element is a sized frame: dragging a resize handle, typing a Width/Height, or
+flipping "Text overflow" converts a pre-0.1.4 hugging element at its current
+measured size, and the "Text overflow" toggle picks between the locked box
+and grow-down. There is no control back to `"auto"` — it exists only so older
+widgets render unchanged until touched.
 
 ---
 

@@ -33,10 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   today's text to reserve room, and a value that gains a line later fills the
   reserve instead of shifting everything below it; when text outgrows the
   reserve, a dashed line marks where the overrun begins. Dragging any resize
-  handle reshapes the frame with the text re-wrapping live as you drag, and
-  an "Auto width" / "Fixed width" control switches back to the old hugging
-  behaviour. Existing widgets are untouched: every already-saved text element
-  keeps hugging its content until you resize it yourself.
+  handle reshapes the frame with the text re-wrapping live as you drag.
+  Existing widgets are untouched: every already-saved text element keeps
+  hugging its content exactly as before until you touch it — the first
+  resize, size edit, or flip of "Text overflow" turns it into a frame at its
+  current size.
 
 ### Changed
 

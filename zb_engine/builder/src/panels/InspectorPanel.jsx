@@ -631,48 +631,28 @@ function TextPanel({ element, updateElement }) {
         </Field>
       </div>
       <div className="field-row">
-        {/* "…width" on both labels: with overflow ON the height is elastic,
-            and with it OFF the label still describes the wrap width. */}
-        <Field label="Sizing" row>
-          <Dropdown
-            value={isFramedTextFlow(element.textFlow) ? 'fixed' : 'auto'}
-            onChange={(val) => {
-              if (val === 'fixed') {
-                if (isFramedTextFlow(element.textFlow)) return;
-                // Convert to the default framed mode: a locked box (overflow
-                // unticked) at the current measured size — a visual no-op,
-                // since auto sizes already hug the content.
-                const patch = { textFlow: 'clip' };
+        {/* Text is always a sized frame — there is no mode dropdown. A text
+            element saved before frames existed keeps hugging its content
+            until first touched; flipping this toggle is such a touch and
+            converts it at its current measured size (a visual no-op). */}
+        <Field row>
+          <Toggle
+            label="Text overflow"
+            value={element.textFlow === 'fixed'}
+            onChange={(checked) => {
+              // Ticked: the box grows downward past its height (the Height
+              // input becomes "Min height"). Unticked: the box is locked and
+              // text past it is cut, with a dashed hint on the bottom edge
+              // while designing.
+              const patch = { textFlow: checked ? 'fixed' : 'clip' };
+              if (!isFramedTextFlow(element.textFlow)) {
                 if (typeof element.sizeX === 'number') patch.sizeX = element.sizeX;
                 if (typeof element.sizeY === 'number') patch.sizeY = element.sizeY;
-                updateElement(element.id, patch);
-              } else {
-                // Back to hugging: the auto-size hook re-measures on its
-                // next pass and shrink-wraps the box.
-                updateElement(element.id, { textFlow: 'auto' });
               }
+              updateElement(element.id, patch);
             }}
-            options={[
-              { value: 'auto', label: 'Auto width' },
-              { value: 'fixed', label: 'Fixed width' },
-            ]}
           />
         </Field>
-        {isFramedTextFlow(element.textFlow) && (
-          <Field row>
-            <Toggle
-              label="Text overflow"
-              value={element.textFlow === 'fixed'}
-              onChange={(checked) => {
-                // Ticked: the box grows downward past its height (the Height
-                // input becomes "Min height"). Unticked: the box is locked
-                // and text past it is cut, with a dashed hint on the bottom
-                // edge while designing.
-                updateElement(element.id, { textFlow: checked ? 'fixed' : 'clip' });
-              }}
-            />
-          </Field>
-        )}
       </div>
       <FillPanel element={element} updateElement={updateElement} />
     </div>
