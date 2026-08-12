@@ -32,7 +32,12 @@ import { resolveAssetSrc } from '../utils/assetSrc.js';
 import { resolveDisplayText, useAutoSizeText } from './useAutoSizeText.js';
 import { useAutoFetchSources } from './useAutoFetchSources.js';
 import { layoutTextBounds } from '../utils/bitmapFont.js';
-import { TEXT_RESIZE_ANCHORS, textReserveOverflow } from './textFrame.js';
+import {
+  TEXT_RESIZE_ANCHORS,
+  minHeightAfterWidthDrag,
+  textAnchorAxes,
+  textReserveOverflow,
+} from './textFrame.js';
 
 /** How fast zooming with the wheel feels. */
 const ZOOM_SENSITIVITY = 1.05;
@@ -172,6 +177,11 @@ export default function CanvasArea() {
   const stageRef = useRef(null);
   const transformerRef = useRef(null);
   const shapeRefs = useRef({});
+  // Anchor being dragged in the current transform, captured at transformstart.
+  // Which axes a TEXT resize authors is decided from this (textAnchorAxes) —
+  // scale factors alone can't tell, because grid snapping perturbs the axis
+  // the user never touched.
+  const activeAnchorRef = useRef(null);
 
   // Viewport size (updated on mount and resize)
   const [viewportSize, setViewportSize] = useState({ w: 800, h: 600 });
@@ -815,26 +825,33 @@ export default function CanvasArea() {
         const minW = 8 * z;
         if (newBox.width < minW) return oldBox;
 
-        let minH =
-          (Math.round((selEl.fontSize ?? 14) * (selEl.lineHeight ?? 1.2)) + 4) * z;
-        if (newBox.height < oldBox.height) {
-          const displayText = resolveDisplayText(selEl.text, selEl.fallbackText, bindingCtx);
-          if (displayText) {
-            // Wrap as 'fixed' whatever the current mode: releasing any resize
-            // handle converts the element to fixed at the dragged sizes.
-            const layout = layoutTextBounds({
-              text: displayText,
-              fontSize: selEl.fontSize ?? 14,
-              fontWeight: selEl.fontWeight ?? 400,
-              fontFamily: selEl.fontFamily ?? 'Sora',
-              lineHeight: selEl.lineHeight ?? 1.2,
-              textFlow: 'fixed',
-              sizeX: newBox.width / z,
-            });
-            if (layout) minH = Math.max(minH, layout.height * z);
+        // Height floors apply only to gestures that AUTHOR height (corners,
+        // top/bottom-center). A side handle authors width alone — its box
+        // height is whatever snapping did to it, and the frame re-wraps on
+        // release — so constraining it would only block legitimate narrowing
+        // of an overflowing frame.
+        if (textAnchorAxes(activeAnchorRef.current).height) {
+          let minH =
+            (Math.round((selEl.fontSize ?? 14) * (selEl.lineHeight ?? 1.2)) + 4) * z;
+          if (newBox.height < oldBox.height) {
+            const displayText = resolveDisplayText(selEl.text, selEl.fallbackText, bindingCtx);
+            if (displayText) {
+              // Wrap as 'fixed' whatever the current mode: releasing any resize
+              // handle converts the element to fixed at the dragged sizes.
+              const layout = layoutTextBounds({
+                text: displayText,
+                fontSize: selEl.fontSize ?? 14,
+                fontWeight: selEl.fontWeight ?? 400,
+                fontFamily: selEl.fontFamily ?? 'Sora',
+                lineHeight: selEl.lineHeight ?? 1.2,
+                textFlow: 'fixed',
+                sizeX: newBox.width / z,
+              });
+              if (layout) minH = Math.max(minH, layout.height * z);
+            }
           }
+          if (newBox.height < minH) return oldBox;
         }
-        if (newBox.height < minH) return oldBox;
       }
 
       return newBox;
@@ -844,6 +861,8 @@ export default function CanvasArea() {
 
   const handleTransformEnd = useCallback(() => {
     setSuppressOverflowBands(false);
+    const anchorName = activeAnchorRef.current;
+    activeAnchorRef.current = null;
     const node = shapeRefs.current[selectedElementId];
     if (!node) return;
 
@@ -898,18 +917,60 @@ export default function CanvasArea() {
       ({ x: newX, y: newY } = centerToCirclePos(newX, newY, newSizeX, newSizeY));
     }
 
+    if (isText) {
+      // D2: a gesture authors only the sizes its handle owns — width from a
+      // side handle, height from a vertical handle, both from a corner.
+      // Writing the untouched axis would bake the stale display height as the
+      // authored minimum: narrow via a side handle, the content re-wraps
+      // taller, and the Min-height marker strands mid-text.
+      const axes = textAnchorAxes(anchorName);
+      const patch = {
+        pos: { x: newX, y: newY },
+        rotationDeg: newRotation,
+        scale: { x: 1, y: 1 },
+        textFlow: 'fixed',
+      };
+      if (axes.width) patch.sizeX = newSizeX;
+      if (axes.height) patch.sizeY = newSizeY;
+      if (axes.width && !axes.height) {
+        // Width-only gesture: a frame that was hugging its content keeps
+        // hugging at the new width; a deliberate reserve stays untouched.
+        const displayText = resolveDisplayText(element.text, element.fallbackText, bindingCtx);
+        const newLayout = displayText
+          ? layoutTextBounds({
+              text: displayText,
+              fontSize: element.fontSize ?? 14,
+              fontWeight: element.fontWeight ?? 400,
+              fontFamily: element.fontFamily ?? 'Sora',
+              lineHeight: element.lineHeight ?? 1.2,
+              textFlow: 'fixed',
+              sizeX: newSizeX,
+            })
+          : null;
+        const followed = minHeightAfterWidthDrag({
+          textFlow: element.textFlow,
+          sizeY: element.sizeY,
+          oldContentHeight: fixedTextLayouts[element.id]?.height,
+          newContentHeight: newLayout?.height,
+        });
+        if (typeof followed === 'number') patch.sizeY = followed;
+      }
+      updateElement(element.id, patch);
+      setGuides([]);
+      return;
+    }
+
     updateElement(element.id, {
       pos: { x: newX, y: newY },
       rotationDeg: newRotation,
       sizeX: newSizeX,
       sizeY: newSizeY,
       scale: { x: 1, y: 1 },
-      ...(isText ? { textFlow: 'fixed' } : {}),
     });
 
     // Clear snap guides after resize is committed
     setGuides([]);
-  }, [selectedElementId, elements, updateElement, snapping]);
+  }, [selectedElementId, elements, updateElement, snapping, bindingCtx, fixedTextLayouts]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -1582,7 +1643,10 @@ export default function CanvasArea() {
             borderStroke="#D42D32"
             borderStrokeWidth={1}
             borderDash={[4, 4]}
-            onTransformStart={() => setSuppressOverflowBands(true)}
+            onTransformStart={() => {
+              activeAnchorRef.current = transformerRef.current?.getActiveAnchor?.() || null;
+              setSuppressOverflowBands(true);
+            }}
             onTransformEnd={handleTransformEnd}
             boundBoxFunc={handleBoundBoxFunc}
           />
