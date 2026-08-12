@@ -44,30 +44,6 @@ export function textAnchorAxes(anchorName) {
 }
 
 /**
- * The Min height to write after a width-only drag, or undefined to keep the
- * stored value. A frame with no declared reserve hugs its content, and
- * "no reserve" is stored as a minimum of 0 — so an auto conversion returns 0,
- * and a legacy hugging minimum (within a pixel of the content at the old
- * width, from before 0 meant hug) is converted to 0. A deliberate reserve or
- * deficit is preserved: the overflow marker reporting content past a CHOSEN
- * minimum is the feature working.
- *
- * @param {object} opts
- * @param {unknown} opts.textFlow - current mode; anything but "fixed" hugs by construction
- * @param {unknown} opts.sizeY - stored minimum height
- * @param {number|undefined} opts.oldContentHeight - wrapped content height at the old width
- * @returns {number|undefined} the minimum to write (0 = hug), or undefined to leave it alone
- */
-export function minHeightAfterWidthDrag({ textFlow, sizeY, oldContentHeight }) {
-  if (textFlow !== 'fixed') return 0;
-  const stored = Number(sizeY);
-  // Already hugging (0/absent), or not a plain number (a bound size): keep.
-  if (!Number.isFinite(stored) || stored <= 0) return undefined;
-  if (typeof oldContentHeight !== 'number') return undefined;
-  return Math.abs(stored - oldContentHeight) <= 1 ? 0 : undefined;
-}
-
-/**
  * How far a text element's wrapped content runs past its authored minimum
  * height, in pixels. Only a fixed-flow element with a DECLARED reserve
  * (minimum > 0) has anything to exceed — auto elements, garbage values

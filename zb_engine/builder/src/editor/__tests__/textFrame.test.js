@@ -7,12 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  TEXT_RESIZE_ANCHORS,
-  minHeightAfterWidthDrag,
-  textAnchorAxes,
-  textReserveOverflow,
-} from '../textFrame.js';
+import { TEXT_RESIZE_ANCHORS, textAnchorAxes, textReserveOverflow } from '../textFrame.js';
 
 describe('TEXT_RESIZE_ANCHORS', () => {
   it('has all eight anchors, including the height-only handles', () => {
@@ -44,53 +39,6 @@ describe('textAnchorAxes', () => {
   it('falls back to both for an unknown or missing anchor', () => {
     expect(textAnchorAxes(null)).toEqual({ width: true, height: true });
     expect(textAnchorAxes(undefined)).toEqual({ width: true, height: true });
-  });
-});
-
-describe('minHeightAfterWidthDrag', () => {
-  it('converts an auto element with no declared reserve (0 = hug)', () => {
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'auto', sizeY: 40, oldContentHeight: 40,
-    })).toBe(0);
-  });
-
-  it('converts a legacy hugging minimum (≈ old content height) to 0', () => {
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 40.6, oldContentHeight: 40,
-    })).toBe(0);
-  });
-
-  it('keeps an already-hugging minimum (0/absent) untouched', () => {
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 0, oldContentHeight: 40,
-    })).toBeUndefined();
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: undefined, oldContentHeight: 40,
-    })).toBeUndefined();
-  });
-
-  it('preserves a deliberate reserve taller than the content', () => {
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 300, oldContentHeight: 200,
-    })).toBeUndefined();
-  });
-
-  it('preserves an existing deficit (minimum already below content)', () => {
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 100, oldContentHeight: 200,
-    })).toBeUndefined();
-  });
-
-  it('leaves the minimum alone when the old content height is unknown', () => {
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: 40, oldContentHeight: undefined,
-    })).toBeUndefined();
-  });
-
-  it('treats a non-numeric stored minimum as not hugging', () => {
-    expect(minHeightAfterWidthDrag({
-      textFlow: 'fixed', sizeY: { $: 'src.h' }, oldContentHeight: 40,
-    })).toBeUndefined();
   });
 });
 

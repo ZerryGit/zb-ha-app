@@ -32,12 +32,7 @@ import { resolveAssetSrc } from '../utils/assetSrc.js';
 import { resolveDisplayText, useAutoSizeText } from './useAutoSizeText.js';
 import { useAutoFetchSources } from './useAutoFetchSources.js';
 import { layoutTextBounds } from '../utils/bitmapFont.js';
-import {
-  TEXT_RESIZE_ANCHORS,
-  minHeightAfterWidthDrag,
-  textAnchorAxes,
-  textReserveOverflow,
-} from './textFrame.js';
+import { TEXT_RESIZE_ANCHORS, textAnchorAxes, textReserveOverflow } from './textFrame.js';
 
 /** How fast zooming with the wheel feels. */
 const ZOOM_SENSITIVITY = 1.05;
@@ -953,15 +948,12 @@ export default function CanvasArea() {
         const hugSlack = snapping.snapEnabled ? snapping.gridStep : 1.5;
         patch.sizeY = layout && newSizeY <= layout.height + hugSlack ? 0 : newSizeY;
       } else if (axes.width) {
-        // Width-only gesture: an auto conversion, or a legacy hugging minimum
-        // (≈ content at the old width), becomes 0 = keep hugging; a deliberate
-        // reserve stays untouched.
-        const followed = minHeightAfterWidthDrag({
-          textFlow: element.textFlow,
-          sizeY: element.sizeY,
-          oldContentHeight: fixedTextLayouts[element.id]?.height,
-        });
-        if (typeof followed === 'number') patch.sizeY = followed;
+        // Width-only gesture: reset the minimum to 0 (hug). A Min height was
+        // chosen against the OLD wrap width — after a re-wrap it is a stale
+        // number, and keeping it leaves the overflow marker stranded at the
+        // old box bottom. Reserve space at the new width by dragging past the
+        // text or typing into "Min height" afterwards.
+        patch.sizeY = 0;
       }
       updateElement(element.id, patch);
       setGuides([]);

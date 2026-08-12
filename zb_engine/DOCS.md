@@ -471,7 +471,9 @@ Fetches state history directly from the HA Supervisor API at render time using
   outgrows its reserve pushes downward instead of being cut off. Setting
   `sizeY` taller than the content reserves room, so a value that gains a line
   later doesn't shift the layout below it. A Min height of 0 means no reserve
-  at all — the frame simply hugs its text.
+  at all — the frame simply hugs its text. Dragging a side handle to change
+  the width resets Min height to 0 (the old number belonged to the old wrap
+  width) — set the reserve after the width.
 
 Any other `textFlow` value behaves as `"auto"`. In the builder, dragging a
 resize handle on a text element (or typing a Width/Height) switches it to
