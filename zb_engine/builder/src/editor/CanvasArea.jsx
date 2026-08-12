@@ -890,10 +890,17 @@ export default function CanvasArea() {
     let newY = node.y() - (element.origin?.y ?? 0);
     const newRotation = Math.round(node.rotation());
 
-    // A rotation-only transform (scale untouched) keeps today's behaviour for
-    // text: write pos/rotation and nothing else — rotating an element must
-    // not convert it to fixed flow or bake sizes.
-    if (element.type === 'text' && scaleX === 1 && scaleY === 1) {
+    // A rotation-only transform writes pos/rotation and nothing else —
+    // rotating a text element must not convert it to a frame or bake sizes.
+    // Detected by the ANCHOR, not by scale factors: the live re-wrap handler
+    // flattens scale to 1 on every resize event, so at transform end a
+    // resize is indistinguishable from a rotation by scale alone. (The
+    // scale check remains only as the fallback for a missing anchor API.)
+    if (
+      element.type === 'text' &&
+      (anchorName === 'rotater' ||
+        (anchorName == null && scaleX === 1 && scaleY === 1))
+    ) {
       if (snapping.snapEnabled) {
         const step = snapping.gridStep;
         newX = snapToGrid(newX, step);
