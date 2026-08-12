@@ -44,8 +44,9 @@ particular:
 - **Outbound fetches can reach any public host out of the box.** Private and
   reserved IP ranges are blocked (SSRF protection with redirect re-validation)
   unless the operator has explicitly listed them, and an optional
-  `allowed_source_domains` allowlist can restrict egress to specific hosts. A
-  residual DNS-rebinding window exists between validation and the actual fetch.
+  `allowed_source_domains` allowlist can restrict egress to specific hosts —
+  it governs data sources and `img`/`svg` element sources alike. A residual
+  DNS-rebinding window exists between validation and the actual fetch.
 - **`allow_private_hosts` is an operator opt-in to reach specific private
   addresses.** It ships empty. An operator may list IPv4 literals or `/24`–`/32`
   CIDRs within `10/8`, `172.16/12`, `192.168/16`, or `100.64/10`; those become

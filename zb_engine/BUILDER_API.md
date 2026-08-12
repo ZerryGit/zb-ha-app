@@ -81,6 +81,8 @@ Content-Type: application/json
 
 > A `200` response with non-empty `sourceErrors` or `renderErrors` means the image was still generated but with fallback/default values for the failed parts. Show these as warnings, not blockers.
 >
+> Both arrays hold human-readable sentences, meant to be displayed as-is. A render error names the element inline — `Element #1 (img) failed: Request timed out after 5000ms` — so no element lookup is needed to make the message useful. Before 0.1.4 each entry was a serialized `{elementIndex, elementType, message}` record that panels printed as raw JSON; do not parse these strings.
+>
 > Decode with: `JSON.parse(atob(res.headers.get('X-Source-Errors')))`
 
 **Error responses**
@@ -526,11 +528,11 @@ async function deployPayload(payload) {
 | Threat | Mitigation |
 |--------|------------|
 | Unauthenticated payload deploy | HA Ingress session required on port 8099 — no API token needed |
-| SSRF via source URLs | RFC1918 + internal hostname blocklist always enforced; not configurable from the builder — operator-only, via the `allow_private_hosts` add-on configuration option |
-| SSRF via img/svg elements | Same RFC1918 blocklist applied to all URL-fetching element types, and the same operator-only `allow_private_hosts` exemption |
+| SSRF via source URLs | RFC1918 + internal hostname blocklist always enforced; not configurable from the builder — operator-only, via the `allow_private_hosts` add-on configuration option. An operator may further restrict public egress with the `allowed_source_domains` allowlist |
+| SSRF via img/svg elements | Same RFC1918 blocklist applied to all URL-fetching element types, the same operator-only `allow_private_hosts` exemption, and — since 0.1.4 — the same `allowed_source_domains` allowlist as data sources |
 | HA entity data leaking | Entities only served on port 8099 (HA session-authenticated); never on port 8000 |
 | Oversized payloads | 2 MB body limit; max 500 sources, 2000 top-level / 10,000 total elements, canvas **4096×4096** |
-| Runaway render | 30-second pipeline timeout; 10-second per-source timeout |
+| Runaway render | 30-second pipeline timeout; 10-second per-source timeout; 5-second per-asset fetch timeout for `img`/`svg` elements |
 | Export token abuse | 128-bit cryptographically random token; single-use; 5-minute TTL; max 20 concurrent |
 
 ---

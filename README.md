@@ -110,7 +110,7 @@ Set these in the add-on's **Configuration** tab:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `allowed_source_domains` | `[]` | Optional allowlist for HTTP data source URLs. Empty = all external allowed. |
+| `allowed_source_domains` | `[]` | Optional allowlist for outbound URLs — HTTP data sources **and** `img`/`svg` element sources alike. Empty = all external allowed. Subdomains of a listed host are also allowed. |
 | `allow_private_hosts` | `[]` | Addresses on your own network the add-on may load from, for both data sources and image/SVG elements. Empty = none. Write the IP address, not a hostname (`192.168.1.50`, or `192.168.1.0/24` for a subnet — `/24` is the widest allowed). See the security note below before adding a camera. |
 | `re_render_minutes` | `0` | Auto re-render interval (0 = disabled, 1–60 minutes). Fetches fresh source data and re-renders on a timer. Uses hash-before-write to avoid unnecessary SD card writes. |
 | `image_port_cooldown_ms` | `4000` | Per-slot minimum interval between unauthenticated image-port on-demand renders. |
@@ -220,7 +220,7 @@ Deploy via the builder or `PUT /payload`. The HA adapter persists the active pri
 | `rect` | Rectangle — fill, stroke, rounded corners, dash |
 | `circle` | Ellipse — arc segment, donut ring |
 | `line` | Polyline — dash, butt/round caps, rounded joints |
-| `text` | Bitmap text — Sora family, 8 sizes × 3 weights |
+| `text` | Bitmap text — Sora family, 8 sizes × 3 weights. Wraps inside a frame you size; `textFlow` picks whether the box cuts the overflow or grows downward past a minimum height |
 | `img` | Fetch & rasterize image → 1-bit |
 | `svg` | Rasterize inline/URL SVG → 1-bit |
 | `graph` | Builder/schema element expanded into primitive shapes before render |
@@ -298,13 +298,19 @@ closest shipped one rather than failing.
 
 ## Error Handling
 
-Errors are collected, not thrown — the image always renders.
+Errors are collected, not thrown — a failed source or element costs that part of
+the widget, not the image. Only the pipeline budget can cost the whole render.
 
 | Failure | Behavior |
 |---------|-----------|
 | Source fetch fails | Fields use `defaultValue`; reported in `X-Source-Errors` header |
 | Element fails | Element skipped; reported in `X-Render-Errors` header |
+| `img`/`svg` host silent for 5s | That element is skipped; the rest of the widget still renders |
 | Pipeline timeout (30s) | Render is aborted and an error response is returned |
+
+Asset fetches are sequential and share the 30s budget, so one to three remote
+images is comfortable — around six unreachable ones exhaust it and the render
+fails outright. Uploaded assets and inline SVGs are not fetched.
 
 ---
 
@@ -350,6 +356,8 @@ curl http://localhost:8099/api/widgets          # List saved widgets
 | Text wrong size | Engine snaps to nearest font. Use 10, 12, 16, 20, 26, 34, 44, or 56 for exact results |
 | `image.bin` unexpected size | The `POST` reply is a 25-byte header + `⌈width/8⌉ × height` image bytes (width padded to a byte boundary). |
 | Deploy returns 403 | Ensure you're accessing via HA Ingress (sidebar). Direct port 8099 access without HA session will fail. |
+| A web image never appears | The host gets 5s to start replying, or the URL is off `allowed_source_domains` / needs `allow_private_hosts`. The Preview tab warning names the reason |
+| Text runs into the element below it | A grow-down frame ("Text overflow" ticked) outgrew its Min height. Raise the reserve, or untick to lock the box and cut instead |
 
 ---
 
