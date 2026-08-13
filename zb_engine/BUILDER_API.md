@@ -81,6 +81,8 @@ Content-Type: application/json
 
 > A `200` response with non-empty `sourceErrors` or `renderErrors` means the image was still generated but with fallback/default values for the failed parts. Show these as warnings, not blockers.
 >
+> Both arrays hold human-readable sentences, meant to be displayed as-is. A render error names the element inline — `Element #1 (img) failed: Request timed out after 5000ms` — so no element lookup is needed to make the message useful. Before 0.1.4 each entry was a serialized `{elementIndex, elementType, message}` record that panels printed as raw JSON; do not parse these strings.
+>
 > Decode with: `JSON.parse(atob(res.headers.get('X-Source-Errors')))`
 
 **Error responses**
@@ -430,6 +432,8 @@ Common fields on all element types:
 
 > **Text visibility:** Text elements require **`enableFill: true`** and **`fill: 100`** to render as solid black. The schema default is `enableFill: false` — without explicitly setting this, text is rendered as invisible white pixels. Always set both fields when creating text elements.
 
+> **Text sizing (`textFlow`):** `"auto"` (the schema default, and the behaviour of every payload written before 0.1.4) hugs the resolved text — at render time the box grows to fit a longer live value and never shrinks. `"fixed"` wraps instead: `sizeX` is the authored wrap width (line breaks are inserted into the string by a pre-render pass; the engine and fonts are untouched), and `sizeY` is an authored **minimum** — the rendered box is `max(sizeY, wrapped content height)`, growing downward, never clipping. A `sizeY` of `0` (or absent) declares no minimum at all: the frame simply hugs its wrapped content. The builder stores `0` whenever a resize lands snug against the text, and whenever a side-handle drag changes the width — a minimum chosen against the old wrap width is a stale number after the re-wrap, so the reserve is authored after the width, not carried across it. `"clip"` wraps exactly like `"fixed"` but `sizeY` **is the box**: the engine cuts content past it (a degenerate `sizeY <= 0` falls back to showing the full content rather than hiding everything). New builder-created text elements default to a 120×60 `"clip"` frame; the "Text overflow" toggle switches `"clip"` ↔ `"fixed"`. Any other value is treated as `"auto"`, so the field cannot break an old widget. Breaks fall after whitespace runs and after hyphens; a single word wider than the frame is split character by character; line count is capped at 4096, past which the remainder renders as one final (clipping) line. If the **resolved** value itself contains `{{`, wrapping is skipped for that element (it falls back to `"auto"`) and a warning is pushed to `renderErrors` — writing the resolved string back would otherwise let the engine interpolate data as an expression.
+
 > **`circle.innerSize`:** This is a **fraction of the outer radius (0.0–1.0)**, not a pixel diameter. `innerSize: 0.5` creates a stroke whose inner edge is halfway to the center. `innerSize: 1.0` = fully hollow. Use a 0–100% slider in the builder UI, divide by 100 before writing to the payload.
 
 > **`group` children:** Child element positions are relative to the group's `pos`. When grouping selected canvas elements, subtract the group's top-left from each child's absolute canvas position: `child.pos = originalAbsolutePos − group.pos`.
@@ -524,11 +528,11 @@ async function deployPayload(payload) {
 | Threat | Mitigation |
 |--------|------------|
 | Unauthenticated payload deploy | HA Ingress session required on port 8099 — no API token needed |
-| SSRF via source URLs | RFC1918 + internal hostname blocklist always enforced; not configurable from the builder — operator-only, via the `allow_private_hosts` add-on configuration option |
-| SSRF via img/svg elements | Same RFC1918 blocklist applied to all URL-fetching element types, and the same operator-only `allow_private_hosts` exemption |
+| SSRF via source URLs | RFC1918 + internal hostname blocklist always enforced; not configurable from the builder — operator-only, via the `allow_private_hosts` add-on configuration option. An operator may further restrict public egress with the `allowed_source_domains` allowlist |
+| SSRF via img/svg elements | Same RFC1918 blocklist applied to all URL-fetching element types, the same operator-only `allow_private_hosts` exemption, and — since 0.1.4 — the same `allowed_source_domains` allowlist as data sources |
 | HA entity data leaking | Entities only served on port 8099 (HA session-authenticated); never on port 8000 |
 | Oversized payloads | 2 MB body limit; max 500 sources, 2000 top-level / 10,000 total elements, canvas **4096×4096** |
-| Runaway render | 30-second pipeline timeout; 10-second per-source timeout |
+| Runaway render | 30-second pipeline timeout; 10-second per-source timeout; 5-second per-asset fetch timeout for `img`/`svg` elements |
 | Export token abuse | 128-bit cryptographically random token; single-use; 5-minute TTL; max 20 concurrent |
 
 ---

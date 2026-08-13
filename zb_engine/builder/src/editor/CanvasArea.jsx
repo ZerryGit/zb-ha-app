@@ -31,6 +31,14 @@ import { resolveVisibilityValue } from '../utils/visibility.js';
 import { resolveAssetSrc } from '../utils/assetSrc.js';
 import { resolveDisplayText, useAutoSizeText } from './useAutoSizeText.js';
 import { useAutoFetchSources } from './useAutoFetchSources.js';
+import { layoutTextBounds } from '../utils/bitmapFont.js';
+import { isFramedTextFlow } from '@shared/textLayout';
+import {
+  TEXT_RESIZE_ANCHORS,
+  textAnchorAxes,
+  textClipHidden,
+  textReserveOverflow,
+} from './textFrame.js';
 
 /** How fast zooming with the wheel feels. */
 const ZOOM_SENSITIVITY = 1.05;
@@ -131,6 +139,37 @@ export default function CanvasArea() {
   useAutoSizeText({ elements, bitmapFontsLoaded, bindingCtx, updateElementDerived });
   useAutoFetchSources(sources);
 
+  // Wrapped layout for every framed (fixed/clip) text element, keyed by
+  // element id. Computed at render time and never written to the store: it
+  // drives the display box, the overflow marker ('fixed') and the clip hint
+  // ('clip'). The line breaks come from the same shared module the server
+  // pre-render pass runs, so the canvas preview and the device wrap
+  // identically for the same input — though a longer live value can still
+  // overflow or clip further on the device.
+  const fixedTextLayouts = useMemo(() => {
+    const layouts = {};
+    if (!bitmapFontsLoaded) return layouts;
+    for (const el of elements ?? []) {
+      if (el.type !== 'text' || !isFramedTextFlow(el.textFlow)) continue;
+      const displayText = resolveDisplayText(el.text, el.fallbackText, bindingCtx);
+      // The server leaves an empty text element untouched (no wrap, no grow) —
+      // measuring '' as one line here would show a display box and overflow
+      // band the device never renders.
+      if (!displayText) continue;
+      const layout = layoutTextBounds({
+        text: displayText,
+        fontSize: el.fontSize ?? 14,
+        fontWeight: el.fontWeight ?? 400,
+        fontFamily: el.fontFamily ?? 'Sora',
+        lineHeight: el.lineHeight ?? 1.2,
+        textFlow: el.textFlow,
+        sizeX: resolveNumeric(el.sizeX, 0, bindingCtx),
+      });
+      if (layout) layouts[el.id] = layout;
+    }
+    return layouts;
+  }, [elements, bindingCtx, bitmapFontsLoaded]);
+
   const width = size?.width ?? 240;
   const height = size?.height ?? 240;
 
@@ -139,12 +178,31 @@ export default function CanvasArea() {
   const stageRef = useRef(null);
   const transformerRef = useRef(null);
   const shapeRefs = useRef({});
+  // Anchor being dragged in the current transform, captured at transformstart.
+  // Which axes a TEXT resize authors is decided from this (textAnchorAxes) —
+  // scale factors alone can't tell, because grid snapping perturbs the axis
+  // the user never touched.
+  const activeAnchorRef = useRef(null);
 
   // Viewport size (updated on mount and resize)
   const [viewportSize, setViewportSize] = useState({ w: 800, h: 600 });
 
   // Guides
   const [guides, setGuides] = useState([]);
+
+  // The overflow band overlay reads element positions from the STORE, but a
+  // dragged/transformed node moves live and only commits on release — a band
+  // left visible during the gesture sits stranded at the stale position and
+  // "teleports" on mouse-up. Hide every band while a gesture is in progress,
+  // like the snap guides; it reappears at the committed position.
+  const [suppressOverflowBands, setSuppressOverflowBands] = useState(false);
+
+  // Live box of the text element currently being resized ({id, width,
+  // height}), updated per transform event so the text re-wraps WHILE the
+  // handle moves instead of only on release. The node's transform scale is
+  // flattened into these dims in the onTransform handler; committed sizes
+  // still come from handleTransformEnd.
+  const [liveTextFrame, setLiveTextFrame] = useState(null);
 
   // Resolved themed colours for the artboard (Konva can't read CSS variables).
   // Read once on mount — the builder is dark-only, so they never change.
@@ -761,12 +819,60 @@ export default function CanvasArea() {
         }
       }
 
+      // Text-frame drag floors. Width: ~8 px so a drag cannot produce a
+      // degenerate frame (the render's maxWidth <= 0 guard still backstops).
+      // Height: a fixed frame renders at max(authored minimum, content) and
+      // never clips, so a handle dragged below the last text line would only
+      // snap back on release and strand the Min-height marker mid-text.
+      // When a drag is REDUCING height, floor it at the content height
+      // re-wrapped live at the proposed width — the handle stops where the
+      // box actually stops. A reserve below the current preview content can
+      // still be authored by typing into "Min height".
+      const selEl = elements?.find((el) => el.id === selectedElementId);
+      if (selEl?.type === 'text') {
+        const minW = 8 * z;
+        if (newBox.width < minW) return oldBox;
+
+        // Height floors apply only to gestures that AUTHOR height (corners,
+        // top/bottom-center). A side handle authors width alone — its box
+        // height is whatever snapping did to it — so constraining it would
+        // only block legitimate narrowing.
+        if (textAnchorAxes(activeAnchorRef.current).height) {
+          let minH =
+            (Math.round((selEl.fontSize ?? 14) * (selEl.lineHeight ?? 1.2)) + 4) * z;
+          // Grow mode ('fixed') cannot render a box shorter than its content,
+          // so its drag stops at the last text line. A locked box ('clip' —
+          // and an auto element converting, since clip is the conversion
+          // default) is ALLOWED below the content: cutting is the point.
+          if (selEl.textFlow === 'fixed' && newBox.height < oldBox.height) {
+            const displayText = resolveDisplayText(selEl.text, selEl.fallbackText, bindingCtx);
+            if (displayText) {
+              const layout = layoutTextBounds({
+                text: displayText,
+                fontSize: selEl.fontSize ?? 14,
+                fontWeight: selEl.fontWeight ?? 400,
+                fontFamily: selEl.fontFamily ?? 'Sora',
+                lineHeight: selEl.lineHeight ?? 1.2,
+                textFlow: 'fixed',
+                sizeX: newBox.width / z,
+              });
+              if (layout) minH = Math.max(minH, layout.height * z);
+            }
+          }
+          if (newBox.height < minH) return oldBox;
+        }
+      }
+
       return newBox;
     },
-    [snapping, selectedElementId, elements, guides],
+    [snapping, selectedElementId, elements, guides, bindingCtx],
   );
 
   const handleTransformEnd = useCallback(() => {
+    setSuppressOverflowBands(false);
+    setLiveTextFrame(null);
+    const anchorName = activeAnchorRef.current;
+    activeAnchorRef.current = null;
     const node = shapeRefs.current[selectedElementId];
     if (!node) return;
 
@@ -784,8 +890,17 @@ export default function CanvasArea() {
     let newY = node.y() - (element.origin?.y ?? 0);
     const newRotation = Math.round(node.rotation());
 
-    // Text elements are auto-sized by measureTextBounds — only update pos/rotation.
-    if (element.type === 'text') {
+    // A rotation-only transform writes pos/rotation and nothing else —
+    // rotating a text element must not convert it to a frame or bake sizes.
+    // Detected by the ANCHOR, not by scale factors: the live re-wrap handler
+    // flattens scale to 1 on every resize event, so at transform end a
+    // resize is indistinguishable from a rotation by scale alone. (The
+    // scale check remains only as the fallback for a missing anchor API.)
+    if (
+      element.type === 'text' &&
+      (anchorName === 'rotater' ||
+        (anchorName == null && scaleX === 1 && scaleY === 1))
+    ) {
       if (snapping.snapEnabled) {
         const step = snapping.gridStep;
         newX = snapToGrid(newX, step);
@@ -795,8 +910,14 @@ export default function CanvasArea() {
       return;
     }
 
-    let newSizeX = (element.sizeX ?? 100) * scaleX;
-    let newSizeY = (element.sizeY ?? 100) * scaleY;
+    // Dragging a resize handle on a text element converts it to fixed flow
+    // and bakes the dragged box (one store write, one undo entry). Sizes come
+    // from the node rather than the element because a grown fixed element
+    // renders taller than its authored minimum — the drag operates on what is
+    // on screen, and where the user releases becomes the new minimum.
+    const isText = element.type === 'text';
+    let newSizeX = (isText ? node.width() : (element.sizeX ?? 100)) * scaleX;
+    let newSizeY = (isText ? node.height() : (element.sizeY ?? 100)) * scaleY;
 
     if (snapping.snapEnabled) {
       const step = snapping.gridStep;
@@ -813,6 +934,59 @@ export default function CanvasArea() {
       ({ x: newX, y: newY } = centerToCirclePos(newX, newY, newSizeX, newSizeY));
     }
 
+    if (isText) {
+      // D2: a gesture authors only the sizes its handle owns — width from a
+      // side handle, height from a vertical handle, both from a corner.
+      // An auto element converts to the default framed mode ('clip', box
+      // locked); an already-framed element keeps its mode.
+      const axes = textAnchorAxes(anchorName);
+      const mode = isFramedTextFlow(element.textFlow) ? element.textFlow : 'clip';
+      const patch = {
+        pos: { x: newX, y: newY },
+        rotationDeg: newRotation,
+        scale: { x: 1, y: 1 },
+        textFlow: mode,
+      };
+      if (axes.width) patch.sizeX = newSizeX;
+      if (axes.height) {
+        if (mode === 'fixed') {
+          // Grow mode: a drag that lands snug against the text means "no
+          // reserve" — store a 0 minimum so the frame keeps hugging when the
+          // text later changes. With snapping on, the lowest landing the
+          // content floor accepts can sit up to one grid step above the
+          // text, so that still counts as snug. Dragging clearly past the
+          // text authors a reserve.
+          const displayText = resolveDisplayText(element.text, element.fallbackText, bindingCtx);
+          const layout = displayText
+            ? layoutTextBounds({
+                text: displayText,
+                fontSize: element.fontSize ?? 14,
+                fontWeight: element.fontWeight ?? 400,
+                fontFamily: element.fontFamily ?? 'Sora',
+                lineHeight: element.lineHeight ?? 1.2,
+                textFlow: 'fixed',
+                sizeX: newSizeX,
+              })
+            : null;
+          const hugSlack = snapping.snapEnabled ? snapping.gridStep : 1.5;
+          patch.sizeY = layout && newSizeY <= layout.height + hugSlack ? 0 : newSizeY;
+        } else {
+          // Locked box: the dragged height IS the box.
+          patch.sizeY = newSizeY;
+        }
+      } else if (axes.width && mode === 'fixed') {
+        // Width-only gesture in grow mode: reset the minimum to 0 (hug). A
+        // Min height was chosen against the OLD wrap width — after a re-wrap
+        // it is a stale number, and keeping it leaves the overflow marker
+        // stranded at the old box bottom. A locked box keeps its height:
+        // narrowing it clips more, which is the mode's contract.
+        patch.sizeY = 0;
+      }
+      updateElement(element.id, patch);
+      setGuides([]);
+      return;
+    }
+
     updateElement(element.id, {
       pos: { x: newX, y: newY },
       rotationDeg: newRotation,
@@ -823,7 +997,7 @@ export default function CanvasArea() {
 
     // Clear snap guides after resize is committed
     setGuides([]);
-  }, [selectedElementId, elements, updateElement, snapping]);
+  }, [selectedElementId, elements, updateElement, snapping, bindingCtx, fixedTextLayouts]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -875,6 +1049,7 @@ export default function CanvasArea() {
       onClick: (e) => handleSelect(element.id, e),
       onTap: (e) => handleSelect(element.id, e),
       onDragStart: () => {
+        setSuppressOverflowBands(true);
         // When dragging an element that's part of a multi-selection,
         // record sibling start positions so we can move them in sync.
         const ids = useUiStore.getState().selectedElementIds;
@@ -911,6 +1086,8 @@ export default function CanvasArea() {
         }
       },
       onDragEnd: (e) => {
+        // The store commit below re-renders the band at the fresh position.
+        setSuppressOverflowBands(false);
         // Commit positions for all selected elements on multi-drag
         if (multiDragStart.current && multiDragStart.current.draggedId === element.id) {
           const ids = useUiStore.getState().selectedElementIds;
@@ -1217,13 +1394,74 @@ export default function CanvasArea() {
               }
 
               if (element.type === 'text') {
+                // Display box, computed at render time and never stored:
+                //   fixed — max(authored minimum, content); a minimum of 0
+                //           means "no reserve, hug the content".
+                //   clip  — the authored box itself (a degenerate box <= 0
+                //           falls back to the content, like the server).
+                //   auto  — the hook-maintained sizes, untouched.
+                // While a resize handle is moving, the live dragged box wins
+                // and the text is re-wrapped at the live width per event.
+                const live = liveTextFrame?.id === element.id ? liveTextFrame : null;
+                const framed = isFramedTextFlow(element.textFlow);
+                const frameW = live
+                  ? live.width
+                  : resolveNumeric(element.sizeX, 0, bindingCtx);
+                let layout = framed ? fixedTextLayouts[element.id] : null;
+                if (live) {
+                  const displayText = resolveDisplayText(element.text, element.fallbackText, bindingCtx);
+                  layout = displayText
+                    ? layoutTextBounds({
+                        text: displayText,
+                        fontSize: element.fontSize ?? 14,
+                        fontWeight: element.fontWeight ?? 400,
+                        fontFamily: element.fontFamily ?? 'Sora',
+                        lineHeight: element.lineHeight ?? 1.2,
+                        textFlow: 'clip',
+                        sizeX: frameW,
+                      })
+                    : null;
+                }
+                const authoredH = resolveNumeric(element.sizeY, 0, bindingCtx);
+                let displayH;
+                if (live) {
+                  displayH = live.height;
+                } else if (element.textFlow === 'clip') {
+                  displayH = authoredH > 0 ? authoredH : (layout?.height ?? 0);
+                } else if (framed) {
+                  displayH = layout ? Math.max(authoredH, layout.height) : authoredH;
+                } else {
+                  displayH = authoredH;
+                }
+                // An empty hugging frame would collapse to zero height and
+                // become unselectable on the canvas — keep one line of hit area.
+                if (!(displayH > 0)) {
+                  displayH =
+                    Math.round((element.fontSize ?? 14) * (element.lineHeight ?? 1.2)) + 4;
+                }
                 return (
                   <BitmapText
                     key={element.id}
                     {...getCommonNodeProps(element)}
-                    width={resolveNumeric(element.sizeX, 0, bindingCtx)}
-                    height={resolveNumeric(element.sizeY, 0, bindingCtx)}
-                    text={resolveDisplayText(element.text, element.fallbackText, bindingCtx)}
+                    onTransform={(e) => {
+                      // Flatten the transformer's scale into the box per move
+                      // so glyphs never stretch, and let React re-wrap the
+                      // text at the live width. Rotation never scales.
+                      if (activeAnchorRef.current === 'rotater') return;
+                      const node = e.target;
+                      const w = Math.max(1, node.width() * node.scaleX());
+                      const h = Math.max(1, node.height() * node.scaleY());
+                      node.scaleX(1);
+                      node.scaleY(1);
+                      node.width(w);
+                      node.height(h);
+                      setLiveTextFrame({ id: element.id, width: w, height: h });
+                    }}
+                    width={frameW}
+                    height={displayH}
+                    text={layout
+                      ? layout.text
+                      : resolveDisplayText(element.text, element.fallbackText, bindingCtx)}
                     fontFamily={element.fontFamily ?? 'Sora'}
                     fontSize={element.fontSize ?? 14}
                     fontWeight={element.fontWeight ?? 400}
@@ -1414,6 +1652,51 @@ export default function CanvasArea() {
               });
             })()}
 
+          {/* Framed-text indicator — one dashed line across the frame at the
+              authored height, drawn whether or not the element is selected:
+              - 'fixed': the overflow marker. Content past the declared
+                minimum grows the box downward; the line sits at that minimum
+                and text below it is the overrun.
+              - 'clip': the clip hint. The line coincides with the locked
+                box's bottom edge whenever wrapped content is cut below it,
+                so hidden text leaves a visible trace while designing.
+              A line, not a box: a closed rect next to an unselected element
+              read as a stray spawned object (owner call, 2026-08-12).
+              Nothing here is stored; it is a draw over two numbers the
+              render already has. */}
+          {!suppressOverflowBands && elements?.map((element) => {
+            if (element.type !== 'text') return null;
+            const layout = fixedTextLayouts[element.id];
+            if (!layout) return null;
+            const authoredH = resolveNumeric(element.sizeY, 0, bindingCtx);
+            const overflow = element.textFlow === 'clip'
+              ? textClipHidden(element.textFlow, authoredH, layout.height)
+              : textReserveOverflow(element.textFlow, authoredH, layout.height);
+            if (overflow <= 0) return null;
+            if (!resolveVisibilityValue(element.visible, bindingCtx, true)) return null;
+            return (
+              <Group
+                key={`text-overflow-${element.id}`}
+                x={resolveNumeric(element.pos?.x, 0, bindingCtx) + (element.origin?.x ?? 0)}
+                y={resolveNumeric(element.pos?.y, 0, bindingCtx) + (element.origin?.y ?? 0)}
+                rotation={resolveNumeric(element.rotationDeg, 0, bindingCtx)}
+                scaleX={element.scale?.x ?? 1}
+                scaleY={element.scale?.y ?? 1}
+                offsetX={element.origin?.x ?? 0}
+                offsetY={element.origin?.y ?? 0}
+                listening={false}
+              >
+                <Line
+                  points={[0, authoredH, resolveNumeric(element.sizeX, 0, bindingCtx), authoredH]}
+                  stroke="#D42D32"
+                  strokeWidth={1 / zoom}
+                  dash={[4 / zoom, 4 / zoom]}
+                  listening={false}
+                />
+              </Group>
+            );
+          })}
+
           {/* Marquee selection rectangle */}
           {marquee && (
             <Rect
@@ -1433,10 +1716,18 @@ export default function CanvasArea() {
           <Transformer
             ref={transformerRef}
             rotateEnabled={true}
-            resizeEnabled={selectedElement?.type !== 'text'}
+            // Text is resizable since the frame work: dragging any handle
+            // converts the element to fixed flow and bakes the dragged
+            // size(s) in handleTransformEnd. Non-text keeps Konva's default
+            // (full) anchor set.
+            enabledAnchors={selectedElement?.type === 'text' ? TEXT_RESIZE_ANCHORS : undefined}
             borderStroke="#D42D32"
             borderStrokeWidth={1}
             borderDash={[4, 4]}
+            onTransformStart={() => {
+              activeAnchorRef.current = transformerRef.current?.getActiveAnchor?.() || null;
+              setSuppressOverflowBands(true);
+            }}
             onTransformEnd={handleTransformEnd}
             boundBoxFunc={handleBoundBoxFunc}
           />

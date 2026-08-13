@@ -45,6 +45,10 @@ export default defineConfig({
       // Shared graph math — single source of truth for both server and builder.
       // The server imports these as TypeScript; Vite transpiles them for the builder.
       '@shared/graph': resolve(__dirname, '../src/data/graph'),
+      // Shared text measurement + word wrapping, same arrangement as the graph
+      // math above. Both trees must break lines identically or the preview
+      // stops matching the panel.
+      '@shared/textLayout': resolve(__dirname, '../src/data/textLayout.ts'),
       // Shared expression engine — single source of truth for bindings,
       // math, logic, pipe-syntax. Aliased to the package's TypeScript
       // source so the builder build does not depend on the package

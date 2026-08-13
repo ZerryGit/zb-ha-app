@@ -1,0 +1,9 @@
+{
+  "misc": { "size": { "width": 320, "height": 120 }, "format": "png", "gridSize": "1x1", "name": "text-clip-frame" },
+  "features": {},
+  "sources": [],
+  "elements": [
+    { "type": "text", "id": "clipped", "pos": { "x": 12, "y": 8 }, "sizeX": 150, "sizeY": 44, "textFlow": "clip", "text": "The quick brown fox jumps over the lazy dog", "fontSize": 16, "fontWeight": 400, "fill": 100 },
+    { "type": "rect", "id": "below-box", "pos": { "x": 12, "y": 60 }, "sizeX": 150, "sizeY": 6, "enableFill": true, "fill": 100 }
+  ]
+}

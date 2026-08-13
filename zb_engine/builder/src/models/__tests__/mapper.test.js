@@ -514,6 +514,31 @@ describe('export → import round-trip stability', () => {
     expect(reExported.elements[0].pos).toEqual({ x: 30, y: 50 });
   });
 
+  it('round-trip keeps textFlow a top-level field (fixed frames must survive reopen)', () => {
+    // Regression: textFlow was missing from ELEMENT_KNOWN_KEYS, so reopening
+    // a saved widget shunted it into `extra`. Every reader coerces an absent
+    // textFlow to auto, so the auto-size hook shrink-wrapped the frame to one
+    // long line and the authored width was clobbered on the next save.
+    const original = {
+      misc: { gridSize: '1x1' },
+      sources: [],
+      elements: [
+        { type: 'text', id: 't1', name: 'Text 1', pos: { x: 4, y: 4 }, sizeX: 80, sizeY: 40, text: 'hello world', textFlow: 'fixed' },
+      ],
+    };
+    const exported = exportRuntimeJson(original);
+    expect(exported.elements[0].textFlow).toBe('fixed');
+
+    const imported = importRuntimeJson(exported);
+    expect(imported.elements[0].textFlow).toBe('fixed'); // top level, where readers look
+    expect(imported.elements[0].extra).toBeUndefined(); // not smuggled through extra
+    expect(imported.elements[0].sizeX).toBe(80);
+    expect(imported.elements[0].sizeY).toBe(40);
+
+    const reExported = exportRuntimeJson(imported);
+    expect(reExported.elements[0].textFlow).toBe('fixed');
+  });
+
   it('round-trip preserves sources with JSON body', () => {
     const original = {
       misc: { gridSize: '1x1' },

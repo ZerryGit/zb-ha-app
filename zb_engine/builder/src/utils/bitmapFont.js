@@ -19,6 +19,8 @@
  *   const canvas = renderBitmapText({ text, width, height, fontSize, ... });
  */
 
+import { layoutTextElement, measureLineVisual } from '@shared/textLayout';
+
 // ── Types (mirrors src/engine/fonts/fontTypes.ts) ──────────────
 
 /**
@@ -243,32 +245,6 @@ function measureLine(line, font) {
 }
 
 /**
- * Measure the pixel width of a line including the last glyph's overhang.
- * Used for bounding box calculation where we need the full visual extent,
- * not just the cursor advance width.
- * @param {string} line
- * @param {FontPack} font
- * @returns {number}
- */
-function measureLineVisual(line, font) {
-  let width = 0;
-  let lastGlyphOverhang = 0;
-  for (const char of line) {
-    const glyph = font.glyphs.get(char);
-    if (glyph) {
-      lastGlyphOverhang = Math.max(0, (glyph.xOffset + glyph.width) - glyph.xAdvance);
-      width += glyph.xAdvance + font.meta.letterSpacing;
-    } else {
-      const space = font.glyphs.get(' ');
-      width += space?.xAdvance ?? Math.round(font.meta.fontSize * 0.3);
-      lastGlyphOverhang = 0;
-    }
-  }
-  if (line.length > 0) width -= font.meta.letterSpacing;
-  return width + lastGlyphOverhang;
-}
-
-/**
  * Measure the bounding box required to render a text string.
  * Returns { width, height } in pixels, with a small padding margin.
  *
@@ -301,6 +277,50 @@ export function measureTextBounds({ text, fontSize, fontWeight = 400, fontFamily
     width: maxLineWidth + padding,
     height: lines.length * lineSpacing + padding,
   };
+}
+
+/**
+ * Measure — and, for fixed-flow elements, wrap — a text element's resolved
+ * string through the shared layout module, using the same snapped font pack
+ * the canvas renders with.
+ *
+ * The line-break decision itself lives in `@shared/textLayout` (the server
+ * pre-render pass runs the identical code); this wrapper only resolves the
+ * font. Returns the content box: for `fixed` elements the caller displays
+ * `max(authored sizeY, height)` and stores nothing.
+ *
+ * @param {object} opts
+ * @param {string} opts.text - The resolved display text
+ * @param {number} opts.fontSize
+ * @param {number} [opts.fontWeight=400]
+ * @param {string} [opts.fontFamily='Sora']
+ * @param {number} [opts.lineHeight=1.2]
+ * @param {unknown} [opts.textFlow] - `"fixed"` wraps to `sizeX`; anything else measures only
+ * @param {number} [opts.sizeX] - Authored frame width, read only in fixed mode
+ * @returns {{ text: string, width: number, height: number } | null} Null if fonts are unavailable
+ */
+export function layoutTextBounds({
+  text,
+  fontSize,
+  fontWeight = 400,
+  fontFamily = 'Sora',
+  lineHeight = 1.2,
+  textFlow,
+  sizeX,
+}) {
+  const font = getFont(fontFamily, fontSize, fontWeight);
+  if (!font) return null;
+
+  const result = layoutTextElement({
+    text: text == null ? '' : String(text),
+    font,
+    fontSize,
+    lineHeight,
+    textFlow,
+    sizeX,
+  });
+
+  return { text: result.text, width: result.contentWidth, height: result.contentHeight };
 }
 
 // ── Text rendering to HTMLCanvasElement ─────────────────────────

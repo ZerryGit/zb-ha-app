@@ -76,6 +76,10 @@ export default function TopBar() {
 
   const handleDeploy = useCallback(async () => {
     setDeploying(true);
+    // Deploy renders both slots server-side, so it waits on the same remote
+    // asset fetches the preview does — show the centered spinner rather than
+    // leave a disabled button as the only sign of life.
+    const busyToken = useUiStore.getState().beginBusyTask('Deploying…');
     try {
       const { activeWidgetId } = useWidgetStore.getState();
       const results = await deployActiveWidget(activeWidgetId);
@@ -91,10 +95,12 @@ export default function TopBar() {
       useWidgetStore.setState({ error: err.message });
     } finally {
       setDeploying(false);
+      useUiStore.getState().endBusyTask(busyToken);
     }
   }, []);
 
   const handlePreviewRefresh = useCallback(async () => {
+    const busyToken = useUiStore.getState().beginBusyTask('Rendering preview…');
     try {
       // Renders the slot the user is currently editing so the cached image
       // for that slot (image.png vs image_fullscreen.png) is refreshed, and
@@ -102,6 +108,8 @@ export default function TopBar() {
       await renderFocusedPreview();
     } catch (err) {
       useWidgetStore.setState({ error: err.message });
+    } finally {
+      useUiStore.getState().endBusyTask(busyToken);
     }
   }, []);
 

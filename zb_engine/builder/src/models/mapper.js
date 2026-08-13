@@ -189,6 +189,7 @@ const ELEMENT_KNOWN_KEYS = new Set([
   'fontWeight',
   'textAlign',
   'lineHeight',
+  'textFlow',
 
   // Graph-specific (consumed by the graph expander at render time)
   'chartType',

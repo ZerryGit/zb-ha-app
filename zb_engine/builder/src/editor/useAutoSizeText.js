@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { evaluate, isBinding, isExpression, buildPipeExpression } from '@zb/expressions';
-import { measureTextBounds, fontsReady } from '../utils/bitmapFont.js';
+import { isFramedTextFlow } from '@shared/textLayout';
+import { layoutTextBounds, fontsReady } from '../utils/bitmapFont.js';
 
 /**
  * Concise, human-readable placeholder for a binding the canvas can't resolve
@@ -87,6 +88,11 @@ export function useAutoSizeText({ elements, bitmapFontsLoaded, bindingCtx, updat
     for (const el of elements) {
       if (el.type !== 'text') continue;
 
+      // A framed element's sizes are authored — the renderer owns nothing
+      // on it, so the hook writes nothing. Skipping the fingerprint too means
+      // a later framed → auto flip re-measures on its first auto pass.
+      if (isFramedTextFlow(el.textFlow)) continue;
+
       // Resolve the actual display text — handles plain strings, bindings,
       // expressions, and template interpolation identically to the render path.
       const displayText = resolveDisplayText(el.text, el.fallbackText, bindingCtx) || 'Text';
@@ -97,7 +103,7 @@ export function useAutoSizeText({ elements, bitmapFontsLoaded, bindingCtx, updat
       // Only recalculate if text-affecting properties actually changed.
       if (prev[el.id] === fp) continue;
 
-      const bounds = measureTextBounds({
+      const bounds = layoutTextBounds({
         text: displayText,
         fontSize: el.fontSize ?? 20,
         fontWeight: el.fontWeight ?? 400,

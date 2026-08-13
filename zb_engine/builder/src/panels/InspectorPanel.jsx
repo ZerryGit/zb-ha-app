@@ -24,11 +24,27 @@ import {
   getSizesForFamily,
   getWeightsForFamilySize,
 } from '../utils/fontCatalog.js';
+import { isFramedTextFlow } from '@shared/textLayout';
 
 function CommonFields({ element, updateElement }) {
   const isLine = element.type === 'line';
+  const isText = element.type === 'text';
+  const isFixedText = isText && element.textFlow === 'fixed';
   const isLocked = useUiStore((s) => !!s.lockedElementIds[element.id]);
   const toggleLock = useUiStore((s) => s.toggleElementLock);
+
+  // Typing a size into a text element authors that dimension, which only
+  // holds if the element is framed — otherwise the auto-size hook clobbers
+  // the typed value on its next pass. An auto element converts to the
+  // default framed mode ('clip', box locked), keeping its hugged sizes as
+  // the box. Both writes go in ONE updateElement call: one undo entry, and
+  // no window where the hook sees an auto element with a hand-typed size.
+  const sizePatch = (patch) => {
+    if (!isText) return updateElement(element.id, patch);
+    const full = { ...patch };
+    if (!isFramedTextFlow(element.textFlow)) full.textFlow = 'clip';
+    return updateElement(element.id, full);
+  };
 
   return (
     <div className="field-stack">
@@ -108,16 +124,18 @@ function CommonFields({ element, updateElement }) {
           <Field label="Width" row>
             <ValueEditor
               value={element.sizeX}
-              onChange={(val) => updateElement(element.id, { sizeX: val })}
+              onChange={(val) => sizePatch({ sizeX: val })}
               renderInput={(val, onChange) => (
                 <NumberInput value={val} onChange={onChange} min={0} />
               )}
             />
           </Field>
-          <Field label="Height" row>
+          {/* On a fixed text frame the vertical size is a floor, not a
+              height — content past it grows the box downward. */}
+          <Field label={isFixedText ? 'Min height' : 'Height'} row>
             <ValueEditor
               value={element.sizeY}
-              onChange={(val) => updateElement(element.id, { sizeY: val })}
+              onChange={(val) => sizePatch({ sizeY: val })}
               renderInput={(val, onChange) => (
                 <NumberInput value={val} onChange={onChange} min={0} />
               )}
@@ -609,6 +627,30 @@ function TextPanel({ element, updateElement }) {
                 ]}
               />
             )}
+          />
+        </Field>
+      </div>
+      <div className="field-row">
+        {/* Text is always a sized frame — there is no mode dropdown. A text
+            element saved before frames existed keeps hugging its content
+            until first touched; flipping this toggle is such a touch and
+            converts it at its current measured size (a visual no-op). */}
+        <Field row>
+          <Toggle
+            label="Text overflow"
+            value={element.textFlow === 'fixed'}
+            onChange={(checked) => {
+              // Ticked: the box grows downward past its height (the Height
+              // input becomes "Min height"). Unticked: the box is locked and
+              // text past it is cut, with a dashed hint on the bottom edge
+              // while designing.
+              const patch = { textFlow: checked ? 'fixed' : 'clip' };
+              if (!isFramedTextFlow(element.textFlow)) {
+                if (typeof element.sizeX === 'number') patch.sizeX = element.sizeX;
+                if (typeof element.sizeY === 'number') patch.sizeY = element.sizeY;
+              }
+              updateElement(element.id, patch);
+            }}
           />
         </Field>
       </div>

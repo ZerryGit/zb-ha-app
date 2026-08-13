@@ -459,6 +459,41 @@ Fetches state history directly from the HA Supervisor API at render time using
 - Supported types: `rect`, `circle`, `line`, `text`, `img`, `svg`, `group`
 - All types support: `pos`, `rotationDeg`, `scale`, `origin`, `opacity`, `visible`
 - Drawn in order — first element is the bottom layer.
+- An `img`/`svg` element pointing at a web address is fetched at render time.
+  The host has 5s to start replying; a slower one is given up on and that
+  element is skipped. The same rules as sources apply to the URL: RFC1918 is
+  blocked unless the operator listed the address in `allow_private_hosts`, and
+  if `allowed_source_domains` is set the host must be on it — one allowlist
+  covers data sources and `img`/`svg` elements alike.
+- These fetches are sequential and share the 30s render budget, so their cost
+  adds up: one to three remote images is comfortable, while around six
+  unreachable ones exhaust the budget and the render returns `500` instead of
+  an image. Uploaded assets and inline SVGs are not fetched and cost nothing.
+
+**Text sizing (`textFlow`)** — a text element's box follows one of three rules:
+
+- `"auto"` (every widget made before 0.1.4): the box hugs the text. A longer
+  live value grows the box sideways at render time; it never shrinks.
+- `"clip"` (what a newly added text element uses, at 120×60): you own the
+  whole box. Lines wrap at `sizeX`, and text past `sizeY` is cut off — the
+  box never moves, whatever the value does. The editor hints at hidden text
+  with a dashed line on the box's bottom edge; a `sizeY` of 0 shows the full
+  content instead of hiding everything.
+- `"fixed"` ("Text overflow" ticked in the builder): like `"clip"`, but
+  `sizeY` is a **minimum** height — the input is labelled "Min height" — and
+  text that outgrows it pushes downward instead of being cut off. Setting
+  `sizeY` taller than the content reserves room, so a value that gains a line
+  later doesn't shift the layout below it. A Min height of 0 means no reserve
+  at all — the frame simply hugs its text. Dragging a side handle to change
+  the width resets Min height to 0 (the old number belonged to the old wrap
+  width) — set the reserve after the width.
+
+Any other `textFlow` value behaves as `"auto"`. In the builder every text
+element is a sized frame: dragging a resize handle, typing a Width/Height, or
+flipping "Text overflow" converts a pre-0.1.4 hugging element at its current
+measured size, and the "Text overflow" toggle picks between the locked box
+and grow-down. There is no control back to `"auto"` — it exists only so older
+widgets render unchanged until touched.
 
 ---
 
@@ -529,13 +564,20 @@ automatically. Examples: 14px snaps to 12px; a 12px Regular request snaps to
 
 ## 8. Error Handling
 
-Errors are collected, not thrown. The image always renders.
+Errors are collected, not thrown: a failed source or element costs that part of
+the widget, not the image. The one exception is the pipeline budget below — if
+the render as a whole runs out of time, there is no image to return.
 
 | Condition | Behavior |
 |-----------|----------|
 | Source fails | Fields use `defaultValue`; reported in `X-Source-Errors` header |
 | Element fails | Element is skipped; reported in `X-Render-Errors` header |
+| `img`/`svg` host doesn't reply within 5s | That element is skipped; the rest of the widget still renders. Several slow assets add up against the 30s budget |
 | Timeout (30s pipeline, 10s per source) | `500` response |
+
+Reported errors are human-readable sentences, not serialized objects — a render
+error names the element inline, e.g.
+`Element #1 (img) failed: Request timed out after 5000ms`.
 
 ---
 
@@ -554,6 +596,32 @@ Errors are collected, not thrown. The image always renders.
 - **Cause:** Requested `fontSize` has no exact match.
 - **Fix:** Engine snaps to nearest size. Available sizes: 10, 12, 16, 20, 26, 34,
   44, 56 px. Note: 14px snaps to 12px. 12px Regular snaps to Light.
+
+**Text overlaps the element below it**
+- **Cause:** A fixed-width text frame wraps a live value taller than the
+  frame's Min height. The box grows downward rather than cutting text off, so
+  it can run into whatever sits below.
+- **Fix:** Raise the frame's Min height to reserve room for the extra lines, or
+  shorten the value with an expression. The builder marks the overrun with a
+  dashed line at the Min height, but that mark reflects the value being
+  previewed — a longer live value on the device can overflow further than what
+  you saw while designing.
+
+**A web image or SVG never appears**
+- **Cause:** The host is given 5s to start replying and a slower one is dropped,
+  or the URL is refused — `img`/`svg` sources go through the same
+  `allowed_source_domains` allowlist as data sources, and a private address
+  needs `allow_private_hosts`.
+- **Fix:** Read the warning under the Preview tab; it names the element and the
+  reason. Uploaded assets and inline SVGs bypass fetching entirely.
+
+**The whole render times out when several images are slow**
+- **Cause:** Asset fetches are sequential and share the 30s render budget. Each
+  unreachable host costs up to 5s, so around six of them exhaust the budget and
+  the render fails outright rather than dropping the pictures individually.
+- **Fix:** Keep remote images to one to three per widget, or upload the asset
+  instead of linking it. A single slow host is harmless — the cost only bites
+  when several are slow at once.
 
 **`image.bin` wrong size**
 - **Cause:** The `POST` reply is framed — a 25-byte header precedes the image —

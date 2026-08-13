@@ -11,27 +11,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The add-on can now load from addresses on your own network, if you allow
   them.** A new `allow_private_hosts` option in the Configuration tab takes a
-  list of addresses on your home network. Add one and the add-on can reach it
-  for both data sources *and* image/SVG elements — a Pi-hole summary, a NAS
-  endpoint, a camera snapshot, a locally rendered Grafana panel. The same entry
-  covers both, so an address that works for a JSON fetch also works for a
-  picture on the same widget. The option ships empty and only an add-on
-  operator can change it, so nothing on your network becomes reachable until
-  you add an entry yourself. Everything else is unchanged: with the list empty,
-  private addresses are refused exactly as before.
+  list of addresses on your home network — a Pi-hole summary, a NAS endpoint, a
+  camera snapshot, a locally rendered Grafana panel. One entry covers both data
+  sources *and* image/SVG elements. The option ships empty and only an add-on
+  operator can change it, so nothing on your network becomes reachable until you
+  add an entry yourself; with the list empty, private addresses are refused
+  exactly as before.
+
+- **Text now lives in a frame you size yourself, and wraps inside it.** Until now
+  a text box always hugged its content, so a longer live value stretched it
+  sideways and pushed centred text out of place. A new text element starts as a
+  120×60 frame: type into it and lines break at the right edge. The box is locked
+  by default — text that doesn't fit is cut off, and the editor marks the hidden
+  part with a dashed line — so a wild live value can never wreck the layout
+  around it. Tick **"Text overflow"** in the text inspector and the box grows
+  downward instead: its height becomes a minimum (the input is then labelled
+  "Min height"), so a value that gains a line fills the reserve rather than
+  shifting everything below it. Resize handles re-wrap the text live as you drag.
+  Existing widgets are untouched: every already-saved text element keeps hugging
+  its content exactly as before until you touch it — the first resize, size edit,
+  or flip of "Text overflow" turns it into a frame at its current size.
+
+- **Preview, Refresh data and Deploy now show that they are working.** A greyed
+  out button was the only sign anything was happening, which is hard to tell
+  apart from a frozen page. A spinner now names the action, and past a second and
+  a half it counts the seconds, so a slow image fetch looks like a slow image
+  fetch instead of a hang. An action that finishes promptly never shows it, and
+  it never blocks the editor while it is up.
 
 ### Changed
 
 - **Remote images hosted far from the add-on no longer fail to load.** An image
-  or SVG element fetched from the web had 0.3 seconds to start replying, which
-  is enough for a server in the same country and not enough for one across an
-  ocean — the picture simply never appeared. The allowance is now 5 seconds.
-  Nearby images are unaffected; they were never waiting. The trade-off is that
-  a widget carrying several unreachable images now takes longer to give up on
-  them, and one carrying six of them at once can run out the 30-second render
-  budget and produce no image at all. One to three remote images is comfortable.
+  or SVG element had 0.3 seconds to start replying — enough for a server in the
+  same country, not for one across an ocean, so the picture simply never
+  appeared. The allowance is now 5 seconds. Nearby images are unaffected; they
+  were never waiting. The trade-off: a widget carrying six unreachable images can
+  run out the 30-second render budget and produce no image at all. One to three
+  remote images is comfortable.
 
 ### Fixed
+
+- **The "allowed source domains" list now covers images and SVGs too.** That list
+  was only ever applied to data sources — an image or SVG element could still be
+  fetched from anywhere on the web. Both now go through it. Nothing changes if
+  you left the option empty, which is the default. If you do use it, check that
+  the addresses your image elements point at are on the list: one that is not
+  will stop appearing, and the widget renders without that picture and notes it
+  under the Preview tab. The rest of the widget is unaffected.
 
 - **Render warnings are readable again.** When an element failed to draw, the
   warning under the Preview tab printed the internal record as raw JSON —
@@ -39,37 +65,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sentence inside it. It now shows the sentence.
 
 - **The builder no longer reports "Image load failed" for an image it simply
-  cannot preview.** An image or SVG element pointing at a web address is
-  blocked by the builder page's own security policy, so it never appears on the
-  editor canvas — even though the widget renders it correctly on the device.
-  The placeholder used to say the load had failed, which sent people looking
-  for a problem that was not there. It now says the preview is unavailable in
-  the editor and points you at the rendered widget to check the result.
-  Uploaded images and inline SVGs are unaffected: they still preview normally,
-  and a genuine failure in one still reports as a failure.
+  cannot preview.** An image or SVG element pointing at a web address is blocked
+  by the builder page's own security policy, so it never appears on the editor
+  canvas — even though the widget renders it correctly on the device. It now says
+  the preview is unavailable in the editor instead of claiming a failure.
+  Uploaded images and inline SVGs still preview normally, and a genuine failure
+  in one still reports as a failure.
 
 ### Known limitations
 
-- **Write the IP address, not a hostname.** `192.168.1.50` works; `nas.local`
-  is refused even if it points at that same address. This is deliberate — a
-  name can be made to point somewhere else between the safety check and the
-  fetch, and an address cannot.
-- **IPv4 only.** IPv6 addresses are not accepted in any form.
-- **One address, or one subnet at most.** A bare address is the recommended
-  form. `192.168.1.0/24` covers a whole subnet and is the widest entry
-  accepted; anything broader (`10.0.0.0/8`, `172.16.0.0/12`) is refused,
-  because those cover the internal network Home Assistant itself runs on.
-- **Some addresses can never be listed**, whatever you write: loopback,
-  link-local, and the internal names `supervisor`, `homeassistant`, `hassio`,
-  and `localhost`.
+- **`allow_private_hosts` takes an IPv4 address, not a hostname.**
+  `192.168.1.50` works; `nas.local` is refused even if it points at that same
+  address — a name can be made to point somewhere else between the safety check
+  and the fetch, and an address cannot. A bare address is the recommended form;
+  `192.168.1.0/24` covers a subnet and is the widest entry accepted, since
+  anything broader would cover the internal network Home Assistant itself runs
+  on. Loopback, link-local, and the internal names `supervisor`,
+  `homeassistant`, `hassio` and `localhost` can never be listed. An entry that
+  isn't a valid address is skipped with a warning in the add-on log rather than
+  stopping the add-on, and grants nothing.
 - **An image loaded from your network is republished on port 8000.** A widget
   renders to an image, and port 8000 serves that image to anything on your
   network with no password. Pointing an image element at a camera makes that
   camera's picture pollable by every device on your network for as long as the
   widget exists. Prefer `image_port_mode: cache-only` if that matters to you.
-- **A bad entry is skipped, not fatal.** An entry that is not a valid address
-  is dropped with a warning in the add-on log and grants nothing; the add-on
-  starts normally and the rest of the list still works.
+- **With "Text overflow" ticked, a text frame can overlap what sits below it.**
+  Text is never cut off in that mode — a value too long for its reserve pushes
+  past the Min height instead. The editor marks the overrun with a dashed line,
+  but that mark reflects the value being previewed: a longer live value on the
+  device can overflow further than what you saw while designing. Leave slack in
+  the Min height if the layout below must never move, or untick "Text overflow"
+  to lock the box and cut the text instead.
 
 ## 0.1.3
 

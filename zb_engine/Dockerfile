@@ -9,6 +9,9 @@ COPY builder/ .
 COPY src/data/graph/ /app/src/data/graph/
 COPY src/data/dataFieldExtractor.ts /app/src/data/dataFieldExtractor.ts
 COPY src/data/downsampling.ts /app/src/data/downsampling.ts
+# Shared text measurement + wrapping, consumed via the @shared/textLayout alias
+COPY src/data/textLayout.ts /app/src/data/textLayout.ts
+# Imported by textLayout.ts (MAX_WRAPPED_LINES) and the graph modules above
 COPY src/limits.ts /app/src/limits.ts
 # Shared expression engine consumed via the @zb/expressions Vite alias
 # (resolved to packages/zb-expressions/src/index.ts).

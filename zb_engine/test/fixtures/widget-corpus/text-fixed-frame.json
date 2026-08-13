@@ -1,0 +1,10 @@
+{
+  "misc": { "size": { "width": 320, "height": 160 }, "format": "png", "gridSize": "1x1", "name": "text-fixed-frame" },
+  "features": {},
+  "sources": [],
+  "elements": [
+    { "type": "text", "id": "wrap", "pos": { "x": 12, "y": 8 }, "sizeX": 150, "sizeY": 24, "textFlow": "fixed", "textAlign": "center", "text": "The quick brown fox jumps over the lazy dog", "fontSize": 16, "fontWeight": 400, "fill": 100 },
+    { "type": "text", "id": "reserve", "pos": { "x": 176, "y": 8 }, "sizeX": 132, "sizeY": 96, "textFlow": "fixed", "text": "Reserved room", "fontSize": 16, "fontWeight": 400, "fill": 100 },
+    { "type": "rect", "id": "below-reserve", "pos": { "x": 176, "y": 110 }, "sizeX": 132, "sizeY": 6, "enableFill": true, "fill": 100 }
+  ]
+}

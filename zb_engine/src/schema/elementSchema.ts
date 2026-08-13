@@ -162,6 +162,11 @@ const textSchema = z.object({
   fontWeight: z.unknown().default(400),
   textAlign: z.unknown().default("left"),
   lineHeight: z.unknown().default(1.2),
+  // "fixed" wraps the resolved value to the authored sizeX and treats sizeY as
+  // a minimum; "clip" wraps the same way but sizeY is the box and the engine
+  // cuts at it. Anything else — including absent, which is every widget saved
+  // before 0.1.4 — means "auto", the shrink-to-fit behaviour.
+  textFlow: z.unknown().default("auto"),
   ...opacityField,
 });
 
