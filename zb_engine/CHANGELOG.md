@@ -20,7 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you add an entry yourself. Everything else is unchanged: with the list empty,
   private addresses are refused exactly as before.
 
+### Changed
+
+- **Remote images hosted far from the add-on no longer fail to load.** An image
+  or SVG element fetched from the web had 0.3 seconds to start replying, which
+  is enough for a server in the same country and not enough for one across an
+  ocean — the picture simply never appeared. The allowance is now 5 seconds.
+  Nearby images are unaffected; they were never waiting. The trade-off is that
+  a widget carrying several unreachable images now takes longer to give up on
+  them, and one carrying six of them at once can run out the 30-second render
+  budget and produce no image at all. One to three remote images is comfortable.
+
 ### Fixed
+
+- **Render warnings are readable again.** When an element failed to draw, the
+  warning under the Preview tab printed the internal record as raw JSON —
+  `{"elementIndex":1,"elementType":"img","message":"…"}` — instead of the
+  sentence inside it. It now shows the sentence.
 
 - **The builder no longer reports "Image load failed" for an image it simply
   cannot preview.** An image or SVG element pointing at a web address is

@@ -572,7 +572,11 @@ export async function runPipeline(
           ...userAssetErrors,
           ...preRasterErrors,
           ...rotatedSvgErrors,
-          ...renderErrors.map((e) => JSON.stringify(e)),
+          // `RenderError` bakes the element index and type into the message
+          // (`errors/renderError.ts`), so the prose alone carries everything
+          // the other four contributors here carry. Serialising the object
+          // instead showed the user raw JSON in the warning list.
+          ...renderErrors.map((e) => e.message),
         ],
       },
     };
