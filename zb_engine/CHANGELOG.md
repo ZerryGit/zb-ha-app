@@ -72,6 +72,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Uploaded images and inline SVGs still preview normally, and a genuine failure
   in one still reports as a failure.
 
+### Security
+
+- **Image-handling dependencies updated.** `sharp` 0.33.5 → 0.35.3 closes four
+  inherited libvips advisories (CVE-2026-33327 / 33328 / 35590 / 35591, all
+  HIGH) on the path that rasterizes uploaded images and SVG, and `body-parser`
+  → 1.20.6 closes an invalid-limit denial-of-service advisory reached through
+  Express. No configuration change is needed. Rendered images are unaffected in
+  content, though the new library compresses PNGs slightly differently, so a
+  device or cache that compares raw image bytes will see one extra refresh
+  after the update.
+
 ### Known limitations
 
 - **`allow_private_hosts` takes an IPv4 address, not a hostname.**

@@ -1,6 +1,6 @@
 {
   "name": "zb-ha-app",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "ZerryBit E-ink Engine — Home Assistant Add-on with 1-bit rendering engine",
   "license": "MIT",
   "author": "ZerryBit",

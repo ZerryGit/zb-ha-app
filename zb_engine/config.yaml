@@ -1,5 +1,5 @@
 name: "ZerryBit Engine"
-version: "0.1.3"
+version: "0.1.4"
 slug: "zb_engine"
 description: "Renders 1-bit e-ink dashboards from a JSON payload. Visual widget builder"
 arch:
