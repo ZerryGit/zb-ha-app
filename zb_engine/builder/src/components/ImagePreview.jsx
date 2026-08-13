@@ -13,6 +13,13 @@
  *   3. Draw the converted canvas through <KonvaImage>.
  * Falls back to the raw image when pixel conversion is impossible (e.g. a
  * cross-origin source taints the canvas), so the element still displays.
+ *
+ * NOTE on http(s) sources: the builder page is served with
+ * `img-src 'self' data: blob:`, so the browser refuses every cross-origin image
+ * before a request is made. Such elements can never preview here, however
+ * healthy the server-side render is — see `placeholderLabel`, which says so
+ * rather than reporting a load failure. The load is still attempted, so a
+ * future same-origin image proxy would start working with no change here.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -80,6 +87,88 @@ function parseSvgViewBox(svgContent) {
   return { vbW, vbH };
 }
 
+/** Placeholder label metrics — approximate, only used to pick a label that fits. */
+const LABEL_FONT_SIZE = 11;
+const LABEL_CHAR_WIDTH = 5.6;
+const LABEL_LINE_HEIGHT = 13;
+
+const URL_PREVIEW_LABEL = 'Preview unavailable in editor — check the rendered widget';
+const URL_PREVIEW_LABEL_SHORT = 'Preview unavailable';
+
+/**
+ * Line count for a label under Konva's word wrap. Character width is an
+ * approximation, but the greedy word-boundary walk is not: dividing length by
+ * line capacity would under-count (a word that does not fit starts a new line,
+ * leaving the previous one short), and under-counting is what lets a label
+ * clip.
+ */
+function estimateWrappedLines(text, width) {
+  const charsPerLine = Math.max(1, Math.floor(width / LABEL_CHAR_WIDTH));
+  let lines = 1;
+  let used = 0;
+
+  for (const word of text.split(' ')) {
+    if (used === 0) used = word.length;
+    else if (used + 1 + word.length <= charsPerLine) used += 1 + word.length;
+    else {
+      lines += 1;
+      used = word.length;
+    }
+    // A word wider than the line breaks mid-word.
+    while (used > charsPerLine) {
+      lines += 1;
+      used -= charsPerLine;
+    }
+  }
+
+  return lines;
+}
+
+/** Whether a wrapped label fits the element box. */
+function labelFits(text, width, height) {
+  return estimateWrappedLines(text, width) * LABEL_LINE_HEIGHT <= height;
+}
+
+/**
+ * Whether this element's source is a literal http(s) URL — the case the
+ * builder page's CSP (`img-src 'self' data: blob:`) refuses outright, so
+ * `onerror` fires before the URL is ever requested. An inline SVG goes through
+ * a blob URL and an `asset:` token has already been resolved to a same-origin
+ * path by the caller; both load normally, so their failures are real.
+ */
+export function isHttpUrlSource(elementType, src, svgData) {
+  if (elementType === 'svg' && svgData) return false;
+  return typeof src === 'string' && /^https?:\/\//i.test(src.trim());
+}
+
+/**
+ * The placeholder label for the current state.
+ *
+ * A URL-sourced image cannot be previewed here no matter what the server does,
+ * so reporting "load failed" invites the user to debug a working widget. The
+ * label states only what this side can know: the editor cannot show it, and
+ * the rendered widget is where to look. It must NOT promise the render will
+ * succeed — CSP blocks before a request is made, so an unlisted private IP, a
+ * host outside `allowed_source_domains`, and a plain 404 all look identical
+ * from here.
+ *
+ * (A future same-origin image proxy would make these loads succeed, and this
+ * branch would simply stop being reached.)
+ */
+export function placeholderLabel({ elementType, src, svgData, loadFailed, width, height }) {
+  if (!loadFailed) return elementType === 'svg' ? '📐 SVG' : '🖼️ Image';
+
+  if (isHttpUrlSource(elementType, src, svgData)) {
+    if (labelFits(URL_PREVIEW_LABEL, width, height)) return URL_PREVIEW_LABEL;
+    if (labelFits(URL_PREVIEW_LABEL_SHORT, width, height)) return URL_PREVIEW_LABEL_SHORT;
+    // Too small for any honest wording — the dashed box alone is better than
+    // a truncated sentence.
+    return '';
+  }
+
+  return elementType === 'svg' ? 'SVG load failed' : 'Image load failed';
+}
+
 /**
  * Placeholder — dashed rectangle with type label, shown when no image is available.
  */
@@ -97,17 +186,23 @@ function Placeholder({ width, height, label }) {
       {/* Diagonal cross lines */}
       <Line points={[0, 0, width, height]} stroke="#ccc" strokeWidth={1} listening={false} />
       <Line points={[width, 0, 0, height]} stroke="#ccc" strokeWidth={1} listening={false} />
-      <Text
-        x={0}
-        y={height / 2 - 6}
-        width={width}
-        text={label}
-        fontSize={11}
-        fontFamily="system-ui, sans-serif"
-        fill="#999"
-        align="center"
-        listening={false}
-      />
+      {label ? (
+        <Text
+          x={0}
+          y={0}
+          width={width}
+          // Centre the whole block vertically so a wrapped two- or three-line
+          // label sits in the box the same way the one-line labels do.
+          height={height}
+          verticalAlign="middle"
+          text={label}
+          fontSize={LABEL_FONT_SIZE}
+          fontFamily="system-ui, sans-serif"
+          fill="#999"
+          align="center"
+          listening={false}
+        />
+      ) : null}
     </Group>
   );
 }
@@ -297,9 +392,7 @@ export default function ImagePreview({
   }, [processed]);
 
   if (!image) {
-    const label = elementType === 'svg'
-      ? (loadFailed ? 'SVG load failed' : '📐 SVG')
-      : (loadFailed ? 'Image load failed' : '🖼️ Image');
+    const label = placeholderLabel({ elementType, src, svgData, loadFailed, width, height });
     return <Placeholder width={width} height={height} label={label} />;
   }
 

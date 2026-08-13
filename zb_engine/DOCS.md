@@ -386,7 +386,8 @@ phase via dot-path extraction.
 - Supported response types: `json`, `xml`, `csv`, `text`
 - Auth types: `none`, `apiKey`, `bearer`, `basic`
 - Fields fall back to `defaultValue` if the source fails.
-- Note: source URLs must be public (RFC1918 blocked).
+- Note: source URLs must be public (RFC1918 blocked), unless the add-on
+  operator has listed the address in `allow_private_hosts`.
 - Max 500 sources per payload. Per-source timeout: 10s. Past 50 the builder
   warns once that a pool this large can slow saves and refreshes on low-power
   hardware.

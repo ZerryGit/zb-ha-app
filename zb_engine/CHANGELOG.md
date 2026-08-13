@@ -5,6 +5,56 @@ All notable changes to ZerryBit Engine are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.4
+
+### Added
+
+- **The add-on can now load from addresses on your own network, if you allow
+  them.** A new `allow_private_hosts` option in the Configuration tab takes a
+  list of addresses on your home network. Add one and the add-on can reach it
+  for both data sources *and* image/SVG elements — a Pi-hole summary, a NAS
+  endpoint, a camera snapshot, a locally rendered Grafana panel. The same entry
+  covers both, so an address that works for a JSON fetch also works for a
+  picture on the same widget. The option ships empty and only an add-on
+  operator can change it, so nothing on your network becomes reachable until
+  you add an entry yourself. Everything else is unchanged: with the list empty,
+  private addresses are refused exactly as before.
+
+### Fixed
+
+- **The builder no longer reports "Image load failed" for an image it simply
+  cannot preview.** An image or SVG element pointing at a web address is
+  blocked by the builder page's own security policy, so it never appears on the
+  editor canvas — even though the widget renders it correctly on the device.
+  The placeholder used to say the load had failed, which sent people looking
+  for a problem that was not there. It now says the preview is unavailable in
+  the editor and points you at the rendered widget to check the result.
+  Uploaded images and inline SVGs are unaffected: they still preview normally,
+  and a genuine failure in one still reports as a failure.
+
+### Known limitations
+
+- **Write the IP address, not a hostname.** `192.168.1.50` works; `nas.local`
+  is refused even if it points at that same address. This is deliberate — a
+  name can be made to point somewhere else between the safety check and the
+  fetch, and an address cannot.
+- **IPv4 only.** IPv6 addresses are not accepted in any form.
+- **One address, or one subnet at most.** A bare address is the recommended
+  form. `192.168.1.0/24` covers a whole subnet and is the widest entry
+  accepted; anything broader (`10.0.0.0/8`, `172.16.0.0/12`) is refused,
+  because those cover the internal network Home Assistant itself runs on.
+- **Some addresses can never be listed**, whatever you write: loopback,
+  link-local, and the internal names `supervisor`, `homeassistant`, `hassio`,
+  and `localhost`.
+- **An image loaded from your network is republished on port 8000.** A widget
+  renders to an image, and port 8000 serves that image to anything on your
+  network with no password. Pointing an image element at a camera makes that
+  camera's picture pollable by every device on your network for as long as the
+  widget exists. Prefer `image_port_mode: cache-only` if that matters to you.
+- **A bad entry is skipped, not fatal.** An entry that is not a valid address
+  is dropped with a warning in the add-on log and grants nothing; the add-on
+  starts normally and the rest of the list still works.
+
 ## 0.1.3
 
 ### Added

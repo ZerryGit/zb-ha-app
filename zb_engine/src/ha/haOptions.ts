@@ -11,6 +11,12 @@ import { logWarn } from "../core/logger";
 
 export interface AddonOptions {
   allowed_source_domains: string[];
+  /**
+   * Private LAN addresses the add-on may fetch from, for both HTTP data
+   * sources and img/svg elements. IPv4 literals or /24–/32 CIDRs; ships
+   * empty. Entries are parsed and enforced in data/urlValidator.ts.
+   */
+  allow_private_hosts: string[];
   re_render_minutes: number; // 0 = disabled, 1–60; ships disabled (config.yaml re_render_minutes: 0)
   /**
    * Per-slot minimum interval between on-demand renders triggered by
@@ -37,6 +43,15 @@ const optionsSchema = z.object({
     .array(z.string().max(253))   // max DNS hostname length
     .max(50)
     .default([]),
+  allow_private_hosts: z
+    // Matches allowed_source_domains rather than the 18 chars of the longest
+    // legal entry: a zod failure here rejects the WHOLE file and falls back to
+    // DEFAULTS, so one long typo would silently reset every other option —
+    // including reopening allowed_source_domains. Length is not the validator;
+    // configurePrivateHosts drops a bad entry individually and warns.
+    .array(z.string().max(253))
+    .max(50)
+    .default([]),
   re_render_minutes: z
     .number()
     .int()
@@ -59,6 +74,7 @@ const optionsSchema = z.object({
 
 const DEFAULTS: AddonOptions = {
   allowed_source_domains: [],
+  allow_private_hosts: [],
   re_render_minutes: 0,
   image_port_cooldown_ms: 4_000,
   image_port_mode: "on-demand",
@@ -79,6 +95,7 @@ export function loadOptions(): AddonOptions {
       }
       return {
         allowed_source_domains: result.data.allowed_source_domains,
+        allow_private_hosts: result.data.allow_private_hosts,
         re_render_minutes: result.data.re_render_minutes,
         image_port_cooldown_ms: result.data.image_port_cooldown_ms,
         image_port_mode: result.data.image_port_mode,

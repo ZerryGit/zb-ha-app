@@ -21,6 +21,7 @@ import {
 import { normalizeSvgElements } from "../data/svgPreprocessor";
 import { sanitizeSvgElementsForEngine } from "../data/svgInlineSanitizer";
 import { clampElementGeometry } from "../data/geometryClamp";
+import { getUrlValidatorConfig } from "../data/urlValidator";
 import { preRasterizeLargeSvgs, compositePreRasteredOnto } from "../data/svgPreRasterizer";
 import {
   preRasterizeRotatedSvgs,
@@ -124,7 +125,12 @@ type RenderWorkerResponse =
  * `__dirname` is valid because the server is compiled as CommonJS.
  */
 const defaultEngineWorkerFactory = (): Worker =>
-  new Worker(path.resolve(__dirname, "renderWorker.js"));
+  // The worker's module registry is its own, so the SSRF allowlists have to
+  // travel with it. Spawn time is enough: options are read once at startup and
+  // a terminated worker is always respawned (disposeEngineWorker below).
+  new Worker(path.resolve(__dirname, "renderWorker.js"), {
+    workerData: getUrlValidatorConfig(),
+  });
 
 let engineWorkerFactory: () => Worker = defaultEngineWorkerFactory;
 

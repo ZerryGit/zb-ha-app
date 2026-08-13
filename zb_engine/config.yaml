@@ -31,11 +31,19 @@ options:
   # are always blocked regardless). Add hostnames (e.g. "api.example.com")
   # to restrict egress; subdomains of a listed host are also allowed.
   allowed_source_domains: []
+  # Addresses on your own network the add-on may load from, for both data
+  # sources and image/SVG elements. Empty = none, and private addresses stay
+  # blocked. Write the IP address, not a hostname (e.g. "192.168.1.50", or
+  # "192.168.1.0/24" for a whole subnet — /24 is the widest allowed).
+  # Anything an image element loads this way is also visible, without a
+  # password, to anything else on your network that can reach port 8000.
+  allow_private_hosts: []
   re_render_minutes: 0
   image_port_cooldown_ms: 4000
   image_port_mode: "on-demand"
 schema:
   allowed_source_domains: [str]
+  allow_private_hosts: [str]
   re_render_minutes: "int(0,60)"
   image_port_cooldown_ms: "int(1000,60000)"
   image_port_mode: "list(on-demand|cache-only)"
