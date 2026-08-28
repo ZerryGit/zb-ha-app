@@ -1,0 +1,12 @@
+{
+  "misc": { "size": { "width": 320, "height": 120 }, "format": "png", "gridSize": "1x1", "name": "legacy-device-source-disabled" },
+  "features": {},
+  "sources": [
+    { "id": "device", "name": "Legacy device source (off)", "kind": "haState", "enabled": false, "entity_id": "sensor.demo", "dataFields": [] }
+  ],
+  "elements": [
+    { "type": "text", "id": "t1", "pos": { "x": 12, "y": 8 }, "sizeX": 296, "sizeY": 28, "text": "present {{ device.present }}", "fallbackText": "--", "fontSize": 20, "fill": 100 },
+    { "type": "text", "id": "t2", "pos": { "x": 12, "y": 44 }, "sizeX": 296, "sizeY": 32, "text": "state {{ device.state }}", "fallbackText": "--", "fontSize": 24, "fill": 100 },
+    { "type": "text", "id": "t3", "pos": { "x": 12, "y": 82 }, "sizeX": 296, "sizeY": 28, "text": "battery {{ device.battery }}", "fallbackText": "--", "fontSize": 20, "fill": 100 }
+  ]
+}

@@ -7,7 +7,14 @@ import { Dropdown, TextInput } from './InspectorFields.jsx';
 import { useDocStore, selectFocusedFeatures, selectFocusedSources } from '../store/docStore.js';
 import { useUiStore } from '../store/uiStore.js';
 import { evaluate, isBinding, isExpression, getExpressionOp } from '@zb/expressions';
-import { buildPreviewContext } from '../utils/expressionContext.js';
+import {
+  buildPreviewContext,
+  DEVICE_PREVIEW_PLACEHOLDER,
+  DEVICE_HINT,
+} from '../utils/expressionContext.js';
+
+/** The telemetry context root. Not a source — see D6. */
+const DEVICE_ID = 'device';
 import {
   createStepArg,
   deserializeStepArg,
@@ -280,8 +287,18 @@ export default function BindingExpressionEditor({ value, onSave, onCancel }) {
     [sources, selectedSourceId],
   );
 
+  // `device` is a context ROOT, not a source, so it has no test response to
+  // browse. Offer it as a pseudo-entry backed by the preview placeholder —
+  // unless the doc already defines a real source with that id, in which case
+  // the user's source wins here exactly as it wins in the render (shadow rule).
+  const docHasDeviceSource = sources.some((s) => s?.id === DEVICE_ID);
+  const showDeviceEntry = !docHasDeviceSource;
+  const deviceSelected = showDeviceEntry && selectedSourceId === DEVICE_ID;
+
   const responseEntry = selectedSourceId ? sourceResponsesById?.[selectedSourceId] : null;
-  const responseData = responseEntry?.data ?? null;
+  const responseData = deviceSelected
+    ? DEVICE_PREVIEW_PLACEHOLDER
+    : (responseEntry?.data ?? null);
 
   // Build context for preview
   const context = useMemo(
@@ -587,6 +604,32 @@ export default function BindingExpressionEditor({ value, onSave, onCancel }) {
                           No sources defined
                         </div>
                       )}
+                      {showDeviceEntry && (
+                        <div
+                          key={DEVICE_ID}
+                          style={{
+                            padding: 'var(--sp-2)',
+                            border: '1px solid var(--c-border)',
+                            borderRadius: 'var(--radius)',
+                            marginBottom: 'var(--sp-2)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onClick={() => setSelectedSourceId(DEVICE_ID)}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                              Panel telemetry (sample)
+                            </div>
+                            <div style={{ fontSize: '11px', opacity: 0.7 }}>
+                              device — battery, temperature, humidity
+                            </div>
+                          </div>
+                          <span>&rsaquo;</span>
+                        </div>
+                      )}
                       {sources.map((s) => {
                         const hasResponse = !!sourceResponsesById?.[s.id];
                         return (
@@ -632,8 +675,11 @@ export default function BindingExpressionEditor({ value, onSave, onCancel }) {
                         &larr; Back
                       </button>
                       <div style={{ fontWeight: 'bold', marginBottom: 'var(--sp-1)' }}>
-                        {selectedSource?.name || selectedSourceId}
+                        {deviceSelected ? 'Panel telemetry (sample)' : selectedSource?.name || selectedSourceId}
                       </div>
+                      {deviceSelected && (
+                        <div className="device-telemetry-hint">{DEVICE_HINT}</div>
+                      )}
                       {responseData ? (
                         <DataTree
                           data={responseData}

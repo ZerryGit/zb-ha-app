@@ -53,6 +53,7 @@ import {
   writeWidget,
   deleteWidget,
   listWidgets,
+  primaryPayloadSize,
 } from "./widgetService";
 import { maskWidgetSecrets, maskPayloadSecrets, restorePayloadSecrets } from "./sourceSecrets";
 
@@ -416,9 +417,28 @@ export function createIngressApp(adapter: PlatformAdapter): AppContext {
         widget.fullscreen = existing.fullscreen;
       }
     }
-    await writeWidget(storage, widget);
+    const saved = await writeWidget(storage, widget);
     logInfo("widget.save", { requestId: getRequestId(req), widgetId: id });
-    res.json({ ok: true, id, name: widget.name, updatedAt: widget.updatedAt });
+    // pairingId/fullscreenPairingId are additive: assigned lazily inside
+    // writeWidget, echoed here so the builder can render the pairing QR
+    // without a follow-up GET. JSON.stringify drops them while undefined.
+    //
+    // width/height are the PERSISTED primary-payload pixel size — the QR's
+    // `w`/`h`. Echoed for the same reason, and only here: GET already carries
+    // the size inside `doc.misc.size`, so duplicating it there would be a
+    // second source of truth in one response. The save response is the only
+    // place the builder can learn the size the server actually stored.
+    const primarySize = primaryPayloadSize(saved);
+    res.json({
+      ok: true,
+      id,
+      name: saved.name,
+      updatedAt: saved.updatedAt,
+      pairingId: saved.pairingId,
+      fullscreenPairingId: saved.fullscreenPairingId,
+      width: primarySize?.width,
+      height: primarySize?.height,
+    });
   }));
 
   app.delete("/api/widgets/:id", mutationLimiter, asyncHandler("DELETE /api/widgets/:id", "Failed to delete widget.", async (req, res) => {

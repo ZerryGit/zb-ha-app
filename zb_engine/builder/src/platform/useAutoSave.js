@@ -221,7 +221,12 @@ async function _doSave(widgetId, { forceNameSave = false } = {}) {
     if (!savePayload) return;
 
     useAutoSaveStore.getState().setSaving(true);
-    await saveWidget(widgetId, savePayload.body);
+    const saveResponse = await saveWidget(widgetId, savePayload.body);
+
+    // Adopt the server-assigned pairing IDs (first save mints them). The
+    // store action ignores saves for non-active widgets, so a late
+    // background timer can't clobber the active widget's IDs.
+    useWidgetStore.getState().applySavedWidgetInfo(widgetId, saveResponse);
 
     // Mark clean in docStore for both entries — single source of truth.
     const serialized = JSON.stringify(savePayload.runtimeJson);

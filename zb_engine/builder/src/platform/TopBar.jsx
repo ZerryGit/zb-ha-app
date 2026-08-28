@@ -15,10 +15,7 @@ import { formatTimeAgo } from '../utils/timeAgo.js';
 import * as api from './apiClient.js';
 import { deployActiveWidget } from './deploy.js';
 import ConfirmModal from '../components/ConfirmModal.jsx';
-
-// Default ESP32 image host port (config.yaml maps container 8000/tcp -> 8000).
-// Used when the Supervisor-reported host-port mapping is unavailable.
-const DEFAULT_IMAGE_HOST_PORT = 8000;
+import QrDropdown, { DEFAULT_IMAGE_HOST_PORT } from './QrDropdown.jsx';
 
 export default function TopBar() {
   const {
@@ -179,16 +176,16 @@ export default function TopBar() {
         )}
       </div>
 
-      {/* Widget name editor */}
-      {activeWidgetId && (
-        <input
-          className="topbar-name-input"
-          value={activeWidgetName}
-          onChange={(e) => setActiveWidgetName(e.target.value)}
-          placeholder="Widget name"
-          disabled={busy}
-        />
-      )}
+      {/* Widget name editor — always mounted so the row never reflows when
+          a widget is selected/deselected (D7 layout lock); merely hidden
+          while no widget is active. */}
+      <input
+        className={`topbar-name-input${activeWidgetId ? '' : ' topbar-name-input--hidden'}`}
+        value={activeWidgetName}
+        onChange={(e) => setActiveWidgetName(e.target.value)}
+        placeholder="Widget name"
+        disabled={busy || !activeWidgetId}
+      />
 
       {/* Device image endpoint — always visible once the HA IP resolves */}
       {hostIp && (
@@ -196,6 +193,10 @@ export default function TopBar() {
           http://{hostIp}:{hostPort || DEFAULT_IMAGE_HOST_PORT}
         </span>
       )}
+
+      {/* Pairing QR dropdown — always mounted; shows inline notices for
+          unresolved-IP / unsaved-widget states (no dialogs). */}
+      <QrDropdown />
 
       {/* Action buttons */}
       <div className="topbar-actions">

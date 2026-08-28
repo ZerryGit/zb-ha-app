@@ -60,13 +60,13 @@ describe("widget count quota", () => {
   it("still allows OVERWRITING an existing widget at the count cap", async () => {
     const metas = fullCountMetas();
     const { storage, writes } = storageWith(metas);
-    await expect(writeWidget(storage, makeWidget(metas[0].id))).resolves.toBeUndefined();
+    await expect(writeWidget(storage, makeWidget(metas[0].id))).resolves.toMatchObject({ id: metas[0].id });
     expect(writes).toHaveLength(1);
   });
 
   it("allows a new widget below the cap", async () => {
     const { storage, writes } = storageWith([{ id: "a", name: "n", updatedAt: 1, size: 16 }]);
-    await expect(writeWidget(storage, makeWidget("new_one"))).resolves.toBeUndefined();
+    await expect(writeWidget(storage, makeWidget("new_one"))).resolves.toMatchObject({ id: "new_one" });
     expect(writes).toHaveLength(1);
   });
 });
@@ -87,7 +87,7 @@ describe("widget aggregate-byte quota", () => {
     const { storage, writes } = storageWith([
       { id: "big", name: "n", updatedAt: 1, size: MAX_WIDGETS_TOTAL_BYTES },
     ]);
-    await expect(writeWidget(storage, makeWidget("big"))).resolves.toBeUndefined();
+    await expect(writeWidget(storage, makeWidget("big"))).resolves.toMatchObject({ id: "big" });
     expect(writes).toHaveLength(1);
   });
 });

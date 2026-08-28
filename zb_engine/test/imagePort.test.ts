@@ -159,14 +159,47 @@ describe("image port — POST /image.bin (framed device reply)", () => {
     expect(second.status).toBe(200);
   });
 
-  it("ignores the request body entirely — any JSON telemetry payload is accepted and has no effect", async () => {
-    const { app } = createTestApp();
+  // CONSCIOUSLY UPDATED by plan 4 Part A: this test used to assert the body
+  // "has no effect". A `telemetry` object now reaches the render context
+  // (`device` namespace, request-scoped). What is unchanged — and is what the
+  // firmware actually depends on — is the WIRE contract: same 200, same
+  // content type, same legacy frame, never a 4xx for an old-firmware body.
+  it("accepts any JSON telemetry body: wire contract unchanged, telemetry reaches the render", async () => {
+    const runPipeline = vi.fn(async () => ({
+      pngBuffer: FAKE_PNG,
+      binBuffer: FAKE_BIN,
+      meta: fakeMeta,
+    }));
+    const { app } = createTestApp({ runPipeline });
     const res = await request(app)
       .post("/image.bin")
       .set("Content-Type", "application/json")
       .send({ wakeReason: "timer", delta: 0, telemetry: { battery: 0 }, mac: "AA:BB:CC:DD:EE:FF" });
+
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("application/octet-stream");
+
+    // battery 0 is a VALID reading, so the namespace is present.
+    const device = runPipeline.mock.calls[0]?.[1] as { present: boolean; battery: number } | undefined;
+    expect(device?.present).toBe(true);
+    expect(device?.battery).toBe(0);
+    // Never exposed, however the body is shaped.
+    expect(JSON.stringify(device)).not.toContain("AA:BB");
+    expect(Object.keys(device ?? {})).not.toContain("wakeReason");
+  });
+
+  it("sends the absent state when a body carries no telemetry at all", async () => {
+    const runPipeline = vi.fn(async () => ({
+      pngBuffer: FAKE_PNG,
+      binBuffer: FAKE_BIN,
+      meta: fakeMeta,
+    }));
+    const { app } = createTestApp({ runPipeline });
+    const res = await request(app).post("/image.bin");
+
+    expect(res.status).toBe(200);
+    const device = runPipeline.mock.calls[0]?.[1] as { present: boolean } | undefined;
+    expect(device?.present).toBe(false);
   });
 
   it("rejects an oversized body with 413 instead of hanging or crashing", async () => {

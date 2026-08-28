@@ -30,12 +30,20 @@ const widgetDocResponseSchema = z.object({
   doc: z.unknown().optional(),
   fullscreen: z.unknown().nullable().optional(),
   updatedAt: z.number().optional(),
+  // Server-assigned pairing IDs (widget envelope, additive). Optional:
+  // widgets saved before the pairing feature have neither until re-saved.
+  pairingId: z.number().int().positive().optional(),
+  fullscreenPairingId: z.number().int().positive().optional(),
 }).passthrough();
 const widgetSaveResponseSchema = z.object({
   ok: z.literal(true),
   id: widgetIdSchema,
   name: z.string().optional(),
   updatedAt: z.number().optional(),
+  // Echoed from the persisted envelope so the builder can render the
+  // pairing QR without a follow-up GET.
+  pairingId: z.number().int().positive().optional(),
+  fullscreenPairingId: z.number().int().positive().optional(),
 }).passthrough();
 const okResponseSchema = z.object({ ok: z.literal(true) }).passthrough();
 const newWidgetIdResponseSchema = z.object({ id: widgetIdSchema }).passthrough();
