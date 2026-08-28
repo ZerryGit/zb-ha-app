@@ -73,6 +73,20 @@ export interface WidgetDoc {
    * `fullscreenPayloadSchema` (`misc.gridSize === "3x2"`).
    */
   fullscreen?: unknown | null;
+  /**
+   * Server-assigned pairing ID for the PRIMARY slot (envelope-only,
+   * additive). Random integer in [100_000_000, 4_294_967_295] (fits u32,
+   * never 0), unique across all widgets and slots. Assigned lazily on save
+   * and carried over on every re-save (`core/widgetService.ts`); never
+   * enters `doc`/payload JSON or the render path.
+   */
+  pairingId?: number;
+  /**
+   * Pairing ID for the FULLSCREEN slot. Sticky: kept on the envelope when
+   * the companion is removed (`fullscreen: null`) so a re-created
+   * fullscreen resumes the same pairing (cloud/app entries stay valid).
+   */
+  fullscreenPairingId?: number;
   updatedAt: number;
 }
 
@@ -88,6 +102,13 @@ export interface WidgetMeta {
    * the quota then degrades to a count-only check.
    */
   size?: number;
+  /** Pairing ID of the primary slot, when assigned (see `WidgetDoc.pairingId`). */
+  pairingId?: number;
+  /**
+   * Pairing ID of the fullscreen slot, when assigned. Sticky — may be
+   * present while the widget currently has no fullscreen payload.
+   */
+  fullscreenPairingId?: number;
 }
 
 /** Summary of a completed render pass. */
@@ -101,7 +122,96 @@ export interface RenderMeta {
   renderTimeMs: number;
   sourceErrors: string[];
   renderErrors: string[];
+  /**
+   * True when this render was seeded with PRESENT device telemetry (D7).
+   * Optional so every existing RenderMeta literal stays valid — absent and
+   * `false` mean the same thing. A cached hit re-serves the original flag,
+   * which is consistent because the D4 cache key includes the telemetry
+   * state, so a hit can only come from a render in the same state.
+   */
+  deviceTelemetryApplied?: boolean;
 }
+
+// ── Device telemetry (plan 4 Part A) ───────────────────────────
+
+/**
+ * The `device` namespace seeded into the render context from a `.bin` POST
+ * body's `telemetry` object (plan 4, D1/D2).
+ *
+ * REQUEST-SCOPED: this is built per request and influences only the frames
+ * rendered for that response. Nothing is persisted, there is no per-device
+ * store, and `mac` is never carried here (D5 exposure policy — `wakeReason`,
+ * `delta` and `mac` are deliberately not exposed to expressions).
+ *
+ * Every field is nullable: an absent OR invalid field is `null` for that
+ * field alone, while valid siblings still render (D1, per-field policy).
+ * Key order is FIXED by `buildDeviceContext` — D4 makes the cache key the
+ * `JSON.stringify` of this object, so construction order IS the canonical
+ * form and no `canonicalJson` helper is needed.
+ */
+export interface DeviceTelemetryContext {
+  /** True iff `telemetry` was a plain object AND at least one field validated. */
+  present: boolean;
+  battery: number | null;
+  charging: boolean | null;
+  units: "metric" | "imperial" | null;
+  /**
+   * Temperature and pressure arrive under DIFFERENT NAMES depending on the
+   * panel's unit mode — the firmware sends `tempC`/`pressureHpa` when
+   * `units:"metric"` and `tempF`/`pressureInhg` when `units:"imperial"`. Both
+   * pairs are exposed RAW, exactly as sent; nothing is converted, so a value
+   * here is always what the device actually reported.
+   *
+   * Consequence for widget authors: on any given panel ONE of each pair is
+   * populated and the other is null. Bind both with defaults, or branch on
+   * `device.units`.
+   */
+  tempC: number | null;
+  tempF: number | null;
+  humidity: number | null;
+  pressureHpa: number | null;
+  pressureInhg: number | null;
+}
+
+/** The validated telemetry values, without the derived `present` flag. */
+export type DeviceTelemetryFields = Omit<DeviceTelemetryContext, "present">;
+
+/**
+ * The ONE constructor for `DeviceTelemetryContext` (D4).
+ *
+ * Called with nothing (or an empty set of validated fields) it returns the
+ * canonical ABSENT state — all nulls, `present:false` — which is what every
+ * telemetry-less render path seeds, so a port render with no telemetry and a
+ * builder `/render` of the same payload hash to the same cache key.
+ */
+export function buildDeviceContext(
+  fields?: Partial<DeviceTelemetryFields> | null,
+): DeviceTelemetryContext {
+  const battery = fields?.battery ?? null;
+  const charging = fields?.charging ?? null;
+  const units = fields?.units ?? null;
+  const tempC = fields?.tempC ?? null;
+  const tempF = fields?.tempF ?? null;
+  const humidity = fields?.humidity ?? null;
+  const pressureHpa = fields?.pressureHpa ?? null;
+  const pressureInhg = fields?.pressureInhg ?? null;
+
+  const present =
+    battery !== null ||
+    charging !== null ||
+    units !== null ||
+    tempC !== null ||
+    tempF !== null ||
+    humidity !== null ||
+    pressureHpa !== null ||
+    pressureInhg !== null;
+
+  // Literal order below IS the canonical key order — do not reorder.
+  return { present, battery, charging, units, tempC, tempF, humidity, pressureHpa, pressureInhg };
+}
+
+/** Precomputed absent state. Frozen so a caller cannot mutate the shared canon. */
+export const ABSENT_DEVICE_CONTEXT: DeviceTelemetryContext = Object.freeze(buildDeviceContext());
 
 // ── StorageAdapter ─────────────────────────────────────────────
 

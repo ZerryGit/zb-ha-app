@@ -675,10 +675,16 @@ body {
   border-bottom: 1px solid var(--c-border);
   height: 44px;
   flex-shrink: 0;
+  /* D7 layout lock: ONE shared fixed width for the widget-selector pill and
+     the name input, sized so "No widget selected ▾" fits the pill compactly
+     at 12px system-ui + 12px side paddings. */
+  --topbar-field-width: 160px;
 }
 
 .topbar-widget-selector {
   position: relative;
+  /* D7 layout lock: never shrink — the endpoint is the only flexible item. */
+  flex: 0 0 auto;
 }
 
 .topbar-dropdown-btn {
@@ -691,7 +697,9 @@ body {
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--c-text);
-  max-width: 200px;
+  /* D7 layout lock: fixed box — short names no longer shrink the pill,
+     long names ellipsize exactly as before. */
+  width: var(--topbar-field-width);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -760,6 +768,74 @@ body {
   color: var(--c-accent);
 }
 
+/* -- Pairing QR dropdown -- */
+/* Same visual pattern as .topbar-dropdown (surface, border, shadow, z-index)
+   but content-sized around the QR canvas instead of a scrolling list. */
+
+.topbar-qr {
+  position: relative;
+  /* D7 layout lock: the QR button never shrinks; only the endpoint yields. */
+  flex: 0 0 auto;
+}
+
+/* Doubled class beats the base .topbar-btn padding, which is declared
+   LATER in this file and would win at equal specificity. */
+.topbar-btn.topbar-qr-btn {
+  /* Icon button: center the qrcode glyph with equal padding on all
+     sides so the button is a square, not a wide pill. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-1);
+}
+
+.topbar-qr-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  margin-top: var(--sp-1);
+  padding: var(--sp-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: max-content;
+  max-width: 260px;
+}
+
+.topbar-qr-canvas {
+  /* qrcode paints its own white quiet zone; keep the corners soft. */
+  border-radius: var(--radius);
+}
+
+.topbar-qr-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--c-text);
+  max-width: 200px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.topbar-qr-ids {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  user-select: text;
+}
+
+.topbar-qr-note {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  max-width: 200px;
+  text-align: center;
+}
+
 .topbar-name-input {
   padding: var(--sp-1) var(--sp-2);
   font-family: var(--font);
@@ -768,8 +844,15 @@ body {
   border-radius: var(--radius);
   background: transparent;
   color: var(--c-text);
-  min-width: 120px;
-  max-width: 250px;
+  /* D7 layout lock: fixed box — typing never resizes it. */
+  width: var(--topbar-field-width);
+  flex: 0 0 auto;
+}
+
+/* Kept mounted (row must not reflow on select/deselect) but invisible
+   while no widget is active. visibility (not display) preserves the box. */
+.topbar-name-input--hidden {
+  visibility: hidden;
 }
 
 .topbar-name-input:hover {
@@ -1333,14 +1416,28 @@ body {
   color: var(--c-danger);
 }
 
-/* Placeholder body of the app-guide dialog — a cursive "coming soon :)". */
-.setup-guide-comingsoon {
-  margin: var(--sp-5) 0 var(--sp-6);
-  font-style: italic;
-  font-family: 'Segoe Script', 'Brush Script MT', cursive;
-  font-size: 1.6em;
+/* Inline hint under the `device` pseudo-source in the binding editor. */
+.device-telemetry-hint {
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--radius);
+  background: var(--c-surface-alt, rgba(127, 127, 127, 0.12));
   color: var(--c-text-muted);
-  text-align: center;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* Body of the app-guide dialog — the numbered pairing steps. */
+.setup-guide-steps {
+  margin: var(--sp-5) 0 var(--sp-6);
+  padding-left: var(--sp-5);
+  text-align: left;
+  color: var(--c-text-muted);
+  line-height: 1.5;
+}
+
+.setup-guide-steps li + li {
+  margin-top: var(--sp-2);
 }
 
 @media (max-width: 640px) {

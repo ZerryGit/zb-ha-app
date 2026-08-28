@@ -10,6 +10,24 @@ import { getDisplayConfig } from './displayConfigStore.js';
 import { createId } from '../utils/ids.js';
 import { isBinding, isExpression } from '@zb/expressions';
 import { fullscreenIdFor, isFullscreenId, primaryIdOf } from './companionId.js';
+import { useNoticeStore } from './noticeStore.js';
+
+/**
+ * The panel-telemetry context root (plan 4, D6). Builder-side only: the server
+ * deliberately never rejects this source id, so a widget already using it keeps
+ * working forever — the shadow rule means the user's source simply wins.
+ */
+export const RESERVED_TELEMETRY_SOURCE_ID = 'device';
+
+/** True when `sources` declares the reserved telemetry id. */
+export function declaresTelemetrySourceId(sources) {
+  return Array.isArray(sources) && sources.some((s) => s?.id === RESERVED_TELEMETRY_SOURCE_ID);
+}
+
+const RESERVED_TELEMETRY_NOTICE = {
+  title: 'Reserved source ID',
+  message: '"device" is reserved for panel telemetry.',
+};
 
 const HISTORY_LIMIT = 100;
 
@@ -407,6 +425,27 @@ export const useDocStore = create(
           console.error(
             `[docStore] JSON edit would set ${imported.sources.length} sources `
             + `(cap ${MAX_SOURCES}); edit not applied.`,
+          );
+          return;
+        }
+        // `device` is the panel-telemetry context root (plan 4, D6). The JSON
+        // tab is the ONLY place a source id is typed by hand — addSource always
+        // receives a generated `id_*` — so this is where the guard has to live.
+        //
+        // Refuse only an edit that INTRODUCES the id. A widget that already
+        // carries a `device` source must stay fully editable (shadow rule: the
+        // server accepts the id forever), so the baseline is the primary's
+        // shared pool — never `entry.doc.sources`, which is empty for a
+        // companion whose JSON tab renders the MERGED pool and would therefore
+        // refuse every companion edit on such a widget.
+        const primaryPool = getPrimaryEntryFor(state)?.doc.sources;
+        if (
+          declaresTelemetrySourceId(imported.sources)
+          && !declaresTelemetrySourceId(primaryPool)
+        ) {
+          console.warn(
+            `[docStore] JSON edit would add a source with the reserved id `
+            + `"${RESERVED_TELEMETRY_SOURCE_ID}"; edit not applied.`,
           );
           return;
         }
@@ -874,6 +913,15 @@ export const useDocStore = create(
       set((state) => {
         const entry = getPrimaryEntryFor(state);
         if (!entry) return;
+        // `device` is the panel-telemetry context root (plan 4, D6). Refuse to
+        // CREATE one here so an author cannot shadow it by accident. This is a
+        // builder-side guard ONLY: the server still accepts the id forever, and
+        // a widget already carrying it keeps loading, rendering and saving
+        // untouched — adding server-side rejection would break stored widgets.
+        if (source?.id === RESERVED_TELEMETRY_SOURCE_ID) {
+          useNoticeStore.getState().showNotice(RESERVED_TELEMETRY_NOTICE);
+          return;
+        }
         if (entry.doc.sources.length >= MAX_SOURCES) {
           // Refuse rather than build a pool the export schema rejects.
           // Surfaced via console so it is not a silent no-op.

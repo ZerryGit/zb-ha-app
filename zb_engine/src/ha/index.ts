@@ -22,6 +22,8 @@ import { registerAssetRoutes } from "./haAssets";
 import { registerDeviceRoutes } from "./haDevice";
 import { loadOptions } from "./haOptions";
 import { createOnDemandImageApp } from "./imageApp";
+import { createPairingResolver } from "./pairingResolver";
+import { readWidget } from "../core/widgetService";
 
 // Re-export createImageApp for backward compatibility (used in tests)
 export { createImageApp } from "./imageApp";
@@ -115,7 +117,15 @@ const { app: staticApp, setBuffer: setImageBuffer } = createOnDemandImageApp({
   // Forward the slot + deviceId through so the on-demand app reads the
   // right device's payload.json / payload.fullscreen.json.
   readPayload: (slot, deviceId) => storage.readPayload(slot, deviceId),
-  runPipeline: (raw) => runPipeline(raw, sourceHandler, storage),
+  // The 2nd arg is the wake's request-scoped telemetry (plan 4). The timer
+  // and startup warm-up call the real runPipeline directly and pass nothing,
+  // so their re-renders deliberately carry the absent state.
+  runPipeline: (raw, device) => runPipeline(raw, sourceHandler, storage, device),
+  // Pairing-based instance requests (`requestedInstances` POST body):
+  // resolve pairingId → (widget, slot), then render from the SAVED widget
+  // doc — no deploy step for paired widgets.
+  resolvePairing: createPairingResolver(storage),
+  readWidget: (widgetId) => readWidget(storage, widgetId),
   cooldownMs: options.image_port_cooldown_ms,
   mode: options.image_port_mode,
 });
@@ -231,6 +241,32 @@ async function warmStartupBuffers(): Promise<void> {
 }
 
 trackBackgroundTask("startup-prerender", warmStartupBuffers());
+
+// QR pairing and `cache-only` are incompatible by construction: a paired
+// instance's frame is rendered only by the port-8000 request that asks for it,
+// and cache-only forbids the port from rendering at all, so every paired
+// instance answers `status = 0` for as long as the mode is set. The device
+// side of that is silent (a panel just shows nothing), so say it once at
+// startup — but only when widgets are actually paired, so an operator who
+// deliberately runs cache-only without the mobile app gets no noise.
+async function warnIfPairingDisabledByMode(): Promise<void> {
+  if (options.image_port_mode !== "cache-only") return;
+  const metas = await storage.listWidgets();
+  const pairedWidgetCount = metas.filter(
+    (m) => typeof m.pairingId === "number" || typeof m.fullscreenPairingId === "number",
+  ).length;
+  if (pairedWidgetCount === 0) return;
+  logWarn("image_port.pairing_disabled", {
+    reason: "cache_only_mode",
+    pairedWidgetCount,
+    detail:
+      "image_port_mode is cache-only, so pairing requests (requestedInstances) always "
+      + "answer status = 0 and paired panels will never receive a frame. Set "
+      + "image_port_mode to on-demand to use the mobile app.",
+  });
+}
+
+trackBackgroundTask("pairing-mode-check", warnIfPairingDisabledByMode());
 
 // ── Timer-based re-render (SD-card safe) ───────────────────────
 

@@ -64,6 +64,8 @@ function reset() {
     widgets: [],
     activeWidgetId: null,
     activeWidgetName: '',
+    activePairingId: null,
+    activeFullscreenPairingId: null,
     loading: false,
     saving: false,
     error: null,
@@ -324,6 +326,171 @@ describe('widgetStore — companion lifecycle', () => {
     expect(useDocStore.getState().docs[fullscreenIdFor('w1')]).toBeUndefined();
     expect(useDocStore.getState().focusedDocId).toBeNull();
     expect(useWidgetStore.getState().activeWidgetId).toBeNull();
+  });
+
+  it('pairing IDs: openWidget adopts them from the load response', async () => {
+    api.loadWidget.mockResolvedValue({
+      name: 'A',
+      doc: { misc: {}, elements: [] },
+      pairingId: 482915637,
+      fullscreenPairingId: 193847265,
+    });
+
+    await useWidgetStore.getState().openWidget('w1');
+
+    expect(useWidgetStore.getState().activePairingId).toBe(482915637);
+    expect(useWidgetStore.getState().activeFullscreenPairingId).toBe(193847265);
+  });
+
+  it('QR size: openWidget adopts the STORED primary size, not the editor doc', async () => {
+    api.loadWidget.mockResolvedValue({
+      name: 'A',
+      doc: { misc: { size: { width: 533, height: 240 } }, elements: [] },
+      pairingId: 482915637,
+    });
+
+    await useWidgetStore.getState().openWidget('w1');
+
+    expect(useWidgetStore.getState().activeWidgetWidth).toBe(533);
+    expect(useWidgetStore.getState().activeWidgetHeight).toBe(240);
+  });
+
+  it('QR size: an envelope with no misc.size loads with both dimensions null', async () => {
+    useWidgetStore.setState({ activeWidgetWidth: 240, activeWidgetHeight: 240 });
+    api.loadWidget.mockResolvedValue({
+      name: 'Sizeless',
+      doc: { misc: {}, elements: [] },
+    });
+
+    await useWidgetStore.getState().openWidget('w1');
+
+    expect(useWidgetStore.getState().activeWidgetWidth).toBeNull();
+    expect(useWidgetStore.getState().activeWidgetHeight).toBeNull();
+  });
+
+  it('pairing IDs: a pre-pairing envelope loads with both IDs null', async () => {
+    useWidgetStore.setState({ activePairingId: 111111111, activeFullscreenPairingId: 222222222 });
+    api.loadWidget.mockResolvedValue({
+      name: 'Old',
+      doc: { misc: {}, elements: [] },
+    });
+
+    await useWidgetStore.getState().openWidget('w1');
+
+    expect(useWidgetStore.getState().activePairingId).toBeNull();
+    expect(useWidgetStore.getState().activeFullscreenPairingId).toBeNull();
+  });
+
+  it('pairing IDs: saveCurrentWidget adopts them from the save response', async () => {
+    useDocStore.getState().openDoc('w1', { misc: {}, elements: [] });
+    useDocStore.getState().switchFocus('w1');
+    useWidgetStore.setState({ activeWidgetId: 'w1', activeWidgetName: 'A' });
+    api.saveWidget.mockResolvedValue({
+      ok: true, id: 'w1', name: 'A', updatedAt: 1, pairingId: 482915637,
+    });
+
+    await useWidgetStore.getState().saveCurrentWidget();
+
+    expect(useWidgetStore.getState().activePairingId).toBe(482915637);
+    expect(useWidgetStore.getState().activeFullscreenPairingId).toBeNull();
+  });
+
+  it('pairing IDs: a save response without them is tolerated (legacy server)', async () => {
+    useDocStore.getState().openDoc('w1', { misc: {}, elements: [] });
+    useDocStore.getState().switchFocus('w1');
+    useWidgetStore.setState({ activeWidgetId: 'w1', activeWidgetName: 'A' });
+    api.saveWidget.mockResolvedValue(undefined);
+
+    await useWidgetStore.getState().saveCurrentWidget();
+
+    expect(useWidgetStore.getState().error).toBeNull();
+    expect(useWidgetStore.getState().activePairingId).toBeNull();
+  });
+
+  it('pairing IDs: applySavedWidgetInfo ignores saves for non-active widgets', () => {
+    useWidgetStore.setState({
+      activeWidgetId: 'w1',
+      activePairingId: 482915637,
+      activeFullscreenPairingId: null,
+      activeWidgetWidth: 240,
+      activeWidgetHeight: 240,
+    });
+
+    useWidgetStore.getState().applySavedWidgetInfo('w2', {
+      ok: true, id: 'w2', pairingId: 999999999, width: 800, height: 480,
+    });
+
+    expect(useWidgetStore.getState().activePairingId).toBe(482915637);
+    expect(useWidgetStore.getState().activeWidgetWidth).toBe(240);
+    expect(useWidgetStore.getState().activeWidgetHeight).toBe(240);
+  });
+
+  it('QR size: an old backend that omits width/height does NOT wipe the loaded size', async () => {
+    // Regression: the builder can run against a deployed add-on too old to
+    // echo width/height. openWidget already learned the size from
+    // doc.misc.size; a silent response must leave it alone, or the QR loses
+    // w/h on the first auto-save.
+    api.loadWidget.mockResolvedValue({
+      name: 'A',
+      doc: { misc: { size: { width: 240, height: 240 } }, elements: [] },
+      pairingId: 482915637,
+    });
+    await useWidgetStore.getState().openWidget('w1');
+    expect(useWidgetStore.getState().activeWidgetWidth).toBe(240);
+
+    useWidgetStore.getState().applySavedWidgetInfo('w1', {
+      ok: true, id: 'w1', name: 'A', updatedAt: 2, pairingId: 482915637,
+    });
+
+    expect(useWidgetStore.getState().activeWidgetWidth).toBe(240);
+    expect(useWidgetStore.getState().activeWidgetHeight).toBe(240);
+    // Pairing IDs keep their old behaviour — the server is their only source.
+    expect(useWidgetStore.getState().activePairingId).toBe(482915637);
+  });
+
+  it('QR size: a save response refreshes the persisted primary size', async () => {
+    useDocStore.getState().openDoc('w1', { misc: {}, elements: [] });
+    useDocStore.getState().switchFocus('w1');
+    useWidgetStore.setState({ activeWidgetId: 'w1', activeWidgetName: 'A' });
+    api.saveWidget.mockResolvedValue({
+      ok: true, id: 'w1', name: 'A', updatedAt: 1, pairingId: 482915637, width: 533, height: 240,
+    });
+
+    await useWidgetStore.getState().saveCurrentWidget();
+
+    expect(useWidgetStore.getState().activeWidgetWidth).toBe(533);
+    expect(useWidgetStore.getState().activeWidgetHeight).toBe(240);
+  });
+
+  it('pairing IDs: createNewWidget adopts the freshly minted ID', async () => {
+    useDocStore.getState().openDoc('seed', { misc: {}, elements: [] });
+    useDocStore.getState().switchFocus('seed');
+    api.saveWidget.mockResolvedValue({
+      ok: true, id: 'w_new', name: 'Untitled 1', updatedAt: 1, pairingId: 271828182,
+    });
+
+    await useWidgetStore.getState().createNewWidget({ resetDoc: true });
+
+    expect(useWidgetStore.getState().activeWidgetId).toBe('w_new');
+    expect(useWidgetStore.getState().activePairingId).toBe(271828182);
+    expect(useWidgetStore.getState().activeFullscreenPairingId).toBeNull();
+  });
+
+  it('pairing IDs: deleting the active widget clears them', async () => {
+    useDocStore.getState().openDoc('w1', { misc: {}, elements: [] });
+    useDocStore.getState().switchFocus('w1');
+    useWidgetStore.setState({
+      activeWidgetId: 'w1',
+      activeWidgetName: 'A',
+      activePairingId: 482915637,
+      activeFullscreenPairingId: 193847265,
+    });
+    api.listWidgets.mockResolvedValue({ widgets: [] });
+
+    await useWidgetStore.getState().deleteWidget('w1');
+
+    expect(useWidgetStore.getState().activePairingId).toBeNull();
+    expect(useWidgetStore.getState().activeFullscreenPairingId).toBeNull();
   });
 
   it('deleteWidget removes an inactive widget and its companion without changing active focus', async () => {

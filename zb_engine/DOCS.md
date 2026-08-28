@@ -1,16 +1,18 @@
 # ZerryBit Engine — Documentation
 
-**Version 0.1.4**
+**Version 0.1.5**
 
 > **Note.** For the builder SPA API, see [`BUILDER_API.md`](BUILDER_API.md).
-> Port `8000` is read-only (image serving for ESP32 devices). All write
-> operations use port `8099` (HA Ingress).
+> Port `8000` serves images for ESP32 devices only — `.png` is GET/HEAD-only,
+> `.bin` is POST-only with an optional body carrying a render selector and
+> panel telemetry — and has no mutation routes. Nothing from that body is ever
+> persisted. All write operations use port `8099` (HA Ingress).
 
 ---
 
 ## Overview
 
-ZerryBit Engine (v0.1.4) is a self-contained TypeScript rendering pipeline
+ZerryBit Engine (v0.1.5) is a self-contained TypeScript rendering pipeline
 built into a Home Assistant Add-on. It accepts a declarative JSON payload,
 optionally fetches live data from HA entities and external APIs, and renders a
 1-bit dithered image for E-ink displays (ESP32 and similar devices). Includes a
@@ -33,13 +35,16 @@ GET http://<your-ha-ip>:8099/panel/    # Management panel
 GET http://<your-ha-ip>:8099/builder/  # Widget Builder SPA
 ```
 
-### Port 8000 (Static side-door)
+### Port 8000 (ESP32 side-door)
 
-Provides a constant, unauthenticated URL for ESP32 devices.
+Provides a constant, unauthenticated URL for ESP32 devices. It is not a static
+file server: a request may drive a fresh render, and the `.bin` POST body may
+carry a render selector and panel telemetry (§3).
 
 ```text
 GET  http://<your-ha-ip>:8000/image.png   # PNG preview
 POST http://<your-ha-ip>:8000/image.bin   # framed 1-bit device reply
+                                          # optional body: requestedInstances + telemetry
 ```
 
 ---
@@ -191,7 +196,7 @@ POST http://<your-ha-ip>:8000/image.bin   # framed 1-bit device reply
 
 ## 3. API Endpoints
 
-### Port 8000 — unauthenticated, ESP32-facing, read-only
+### Port 8000 — unauthenticated, ESP32-facing, image-only
 
 > **LAN trust assumption.** Port 8000 has no authentication — it is intended for
 > ESP32 devices that cannot speak HA's auth protocol. The **operator** is
@@ -202,13 +207,23 @@ POST http://<your-ha-ip>:8000/image.bin   # framed 1-bit device reply
 > 1. **Per-slot cooldown** (`image_port_cooldown_ms`, default 4000 ms). A burst
 >    of GETs from a single client triggers at most one render per slot per
 >    cooldown window.
-> 2. **Conditional GET** (`If-None-Match` / `304`). Every response carries a
->    strong ETag (sha1 over the body). A polling client that already holds the
->    bytes gets a `304` without driving a render.
+> 2. **Conditional GET** (`If-None-Match` / `304`) on the PNG endpoints. Every
+>    PNG response carries a strong ETag (sha1 over the body), so a polling
+>    client that already holds the bytes gets a `304` without driving a render.
+>    (`.bin` replies embed a live clock, so they are always unique — no ETag.)
 > 3. **Cache-only mode** (`image_port_mode: cache-only`). When set, port 8000
 >    **never** drives a render — it only serves whatever the Ingress UI /
 >    periodic re-render timer has produced. Use this when the LAN side cannot be
 >    fully trusted.
+>
+>    **This disables QR pairing entirely.** A paired instance's frame is
+>    rendered only by the request that asks for it, so with the port forbidden
+>    to render, every `requestedInstances` section answers `status = 0` —
+>    permanently, not just until something warms up. Paired panels and the
+>    mobile app will never receive a frame. The two features are mutually
+>    exclusive: pick `on-demand` if you use pairing. The add-on logs
+>    `image_port.pairing_disabled` at startup when this mode is set and paired
+>    widgets exist.
 
 #### Data & credential storage
 
@@ -243,13 +258,198 @@ big-endian sidebar clock) followed by the 1-bit image. Image bytes are
 MSB-first, 8 pixels/byte, row-major, with bit polarity matched to the ESP32
 wire format (`1` = white). Total size = `25 + ceil(width/8) * height` bytes.
 Returns `503` if no payload has been deployed yet. `Cache-Control: no-cache`.
-The request body is ignored, and — because the live clock makes every reply
-unique — there is no ETag / conditional-request path on this endpoint.
+Because the live clock makes every reply unique, there is no ETag /
+conditional-request path on `.bin` endpoints.
+
+The request body (size-capped at 4 KiB) carries two things — an optional
+**render selector** and optional **device telemetry**. Nothing from it is ever
+persisted:
+
+- **No body, a non-JSON body, or JSON without a `requestedInstances` key**
+  (e.g. the ESP32 telemetry blob): the legacy single-frame reply described
+  above, byte-identical to previous releases. Existing firmware never breaks.
+- **`{ "requestedInstances": [<pairing IDs>] }`** — 1–12 integer pairing IDs
+  (mixed primary/fullscreen allowed, duplicates deduped preserving first
+  occurrence). The reply is a **multi-frame stream**
+  (`Content-Type: application/octet-stream`, chunked, no ETag) with one
+  section per requested ID, in request order:
+
+  ```text
+  u32 LE  pairingId    echo of the requested ID
+  u8      status       1 = frame follows, 0 = unavailable (no frame)
+  [25-byte framed header + payload]    only when status == 1
+  ```
+
+  Each section is written to the socket as its render completes, and each
+  frame stays self-delimiting via the header's payload length. `status = 0`
+  (unknown ID, fullscreen currently removed, widget fails to load, render
+  failure, or a busy render guard) skips that ID's frame without failing the
+  rest of the stream. In `cache-only` mode *every* section is `status = 0` —
+  see the LAN-trust note above. Requested
+  instances render from the **saved** widget document — no deploy step is
+  required for paired widgets.
+- **A `requestedInstances` key that fails validation** (wrong types, more
+  than 12 IDs, out-of-range values): `400 {"error":"Invalid requestedInstances."}`.
+
+### Device telemetry — the `device` namespace
+
+A `telemetry` object in the same body is exposed to the widget's expressions
+as `device` **for the frames of that response only**. It is read from BOTH
+body classes (a legacy wake and a `requestedInstances` request) off the same
+single parse, and every frame of a multi-frame stream shares it — they are all
+being rendered for that device. Example values — the panel supplies the real
+ones:
+
+```json
+{
+  "requestedInstances": [1704755566],
+  "telemetry": { "battery": 42, "charging": false, "units": "metric",
+                 "tempC": 21.7, "humidity": 43.5, "pressureHpa": 1012.3 }
+}
+```
+
+| Expression | Type | Accepted range |
+|---|---|---|
+| `device.present` | boolean | `true` iff `telemetry` was an object AND ≥1 field validated |
+| `device.battery` | number | 0–100 |
+| `device.charging` | boolean | — |
+| `device.units` | string | `metric` \| `imperial` |
+| `device.tempC` | number | −90…90 (metric panels) |
+| `device.tempF` | number | −130…194 (imperial panels) |
+| `device.humidity` | number | 0–100 |
+| `device.pressureHpa` | number | 300–1200 (metric panels) |
+| `device.pressureInhg` | number | 8.85…35.45 (imperial panels) |
+
+**Temperature and pressure come in two shapes.** The firmware sends
+`tempC`/`pressureHpa` when `units` is `metric` and `tempF`/`pressureInhg` when
+it is `imperial`. Both pairs are read RAW — nothing is converted, and the
+add-on does not branch on `units`, so a value in `device.tempF` is exactly what
+the panel reported. **On any given panel one of each pair is populated and the
+other is `null`**, so branch on `device.units`:
+
+```json
+{ "if": [ { "==": [ { "$": "device.units" }, "imperial" ] },
+          { "$": "device.tempF", "default": "--" },
+          { "$": "device.tempC", "default": "--" } ] }
+```
+
+That renders `71.1` on an imperial panel, `21.7` on a metric one, and `--` when
+no panel has woken. Note a `default` is **not** resolved — it is returned
+verbatim — so nesting a binding inside another binding's `default` does not
+work; the `if` form above is the way to express the fallback. Two stacked text
+elements, each bound to one field with an empty default, is the simpler
+alternative: only the populated one draws anything.
+
+An imperial panel therefore leaves `device.tempC` empty forever, and because a
+field the firmware never sends is nulled *silently* (unknown keys are ignored
+by design), nothing warns about it. A widget that binds only `device.tempC`
+looks fine on a metric bench and shows its default in the field.
+
+`wakeReason`, `delta` and `mac` are **never** exposed and never logged.
+
+**Per-field validation.** Field names and types are frozen by the firmware
+contract, but sensor VALUES are not — a glitch can produce anything. Each
+field validates on its own: an invalid or absent one becomes `null` while its
+siblings still render, and unknown keys are ignored. A bad telemetry object is
+**never** a 4xx and never fails a wake; rejected field *names* (never values)
+are logged once per request as `telemetry.field_reject`.
+
+**Authoring — always bind with a default.** This is the only safe form:
+
+```json
+{ "$": "device.battery", "default": "--" }
+```
+
+Because null-handling differs by form, and one of them lies:
+
+| Form | Renders when telemetry is absent |
+|---|---|
+| `{ "$": "device.battery", "default": "--" }` | `--` |
+| `{{device.battery}}` | empty string (a text element's `fallbackText` then shows) |
+| `{{device.tempC\|round}}` | **`0`** — a confident, wrong reading |
+
+The last row is the trap: piping through a math op coerces null to `0`, so the
+panel displays a plausible number for a device that has never woken. `0` is not
+empty, so `fallbackText` does not rescue it either.
+
+**Freshness.** A wake is answered with a frame rendered from **its own**
+telemetry. When a POST's telemetry differs from whatever the cached frame was
+rendered with, the per-instance cooldown (`image_port_cooldown_ms`, default
+4 s) is bypassed so the device gets its own readings back rather than the
+previous wake's. Repeat wakes carrying identical readings still dedupe against
+the cooldown, so a panel reporting unchanged values costs nothing extra, and
+scheduled re-renders (which carry no telemetry) cannot mask a fresh wake.
+
+Two cases still serve a frame that is not from the current wake:
+
+1. **Render guard busy** — renders are serialised process-wide (one at a time).
+   A wake arriving while another render is in flight is served the cached
+   frame, which may carry earlier telemetry. It corrects on the next wake.
+2. **`cache-only` mode** — the port never renders at all, so `device.present`
+   is always `false` and telemetry has no effect.
+
+**Shadow semantics.** `device` is *not* a reserved context root. A widget that
+**declares** its own source with that id owns the root outright: the telemetry
+namespace is not seeded at all for that widget, so it behaves exactly as it
+always did, on every release, with no migration. The builder blocks *creating*
+a new source with that id, but the server accepts it forever.
+
+The test is the **declaration**, not whether the source produces a value. A
+`device` source that is disabled, or whose fetch fails, still shadows the
+namespace — the widget's own source wins even when it yields nothing, and
+`device.*` resolves against that rather than against panel telemetry. (Seeding
+first and letting the source overwrite would behave identically for an enabled
+source, but would quietly hand telemetry to a widget that declared the root and
+switched it off.)
+
+**Client read-timeout guidance:** renders are sequential behind the global
+render mutex with up to 30 s per render, so a worst-case 12-ID request can
+legitimately hold its (chunked, alive) response open for several minutes on a
+Raspberry Pi. App/cloud clients should use a generous whole-response read
+timeout — minutes, not seconds — and consume frames as they stream.
 
 **`GET :8000/image_fullscreen.png`**
 **`POST :8000/image_fullscreen.bin`**
-Same shape as the primary endpoints, but for the fullscreen companion slot.
-Independent buffer and cooldown.
+Same shape as the primary endpoints, but for the fullscreen companion slot —
+including the identical `requestedInstances` behavior. Independent buffer and
+cooldown.
+
+#### Widget pairing (QR)
+
+Every widget is assigned a persistent numeric **pairing ID** on its envelope
+the first time it is saved; a fullscreen companion gets a second one. IDs are
+random 9–10-digit integers (u32 range, never `0`), unique across all widgets
+and slots, and stable across re-saves. They are not secrets — port 8000
+remains unauthenticated LAN-trust.
+
+The builder's top-bar **QR** button encodes a compact JSON contract
+(format version `v: 1`) that the ZerryBit mobile app scans to pair a widget:
+
+```json
+{"v":1,"url":"http://192.168.1.23:8000/image.bin","fsUrl":"http://192.168.1.23:8000/image_fullscreen.bin","id":482915637,"fs":193847265,"w":240,"h":240,"name":"Kitchen panel"}
+```
+
+- `url` / `fsUrl` — full device-facing endpoints built from the HA host LAN
+  IP and the mapped image host port (default `8000`).
+- `id` — the widget's pairing ID (never `0`).
+- `fs` — the fullscreen pairing ID, or `0` while the widget has no
+  fullscreen. The stored fullscreen ID is **sticky**: deleting the companion
+  reports `fs: 0`, but re-creating it resumes the old pairing, so app/cloud
+  entries stay valid.
+- `w` / `h` — pixel size of the **primary** slot, exactly as persisted
+  (`doc.misc.size`), so the app can lay the widget out before it fetches a
+  frame. Grid-derived and display-mode-dependent, so not always a round
+  multiple of 240 — a `2x1` widget on the `full` preset is `533×240`. Taken
+  from the SAVED envelope, never the live editor document: the QR always
+  advertises the size the device will actually be served.
+- `name` — widget name, truncated to 50 characters (47 + `...`).
+
+The **fullscreen** slot has no `w`/`h` counterpart in `v: 1`. It is `720×480`
+under the default Display Mode; a user who switches that setting to `full` or
+`custom` gets a companion of a different size, and the authoritative width and
+height are in every frame header (`u16 LE` at byte offsets 2 and 4) regardless.
+
+Paired devices then request frames via `requestedInstances` above.
 
 ### Port 8099 — authenticated via HA Ingress session
 

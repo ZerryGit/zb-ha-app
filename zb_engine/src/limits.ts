@@ -16,11 +16,11 @@ export const MAX_REQUEST_BODY = "2mb";
 
 /**
  * Maximum body size accepted on the device-facing `POST /image.bin`
- * endpoint (port 8000). The ESP32 self-host contract sends a small JSON
- * telemetry body, but this add-on has no telemetry→render
- * channel — the body is never parsed for meaning, only drained up to this
- * bound to prevent a large POST from exhausting resources on the
- * unauthenticated port.
+ * endpoint (port 8000). The body is parsed ONLY as an optional
+ * Zod-validated render selector (`requestedInstances` — `ha/imageApp.ts`);
+ * anything else — the ESP32 telemetry blob included — is drained up to
+ * this bound and ignored, so a large POST cannot exhaust resources on the
+ * unauthenticated port. There is still no telemetry→render channel.
  */
 export const MAX_DEVICE_REQUEST_BODY_BYTES = 4 * 1024; // 4 KiB
 
@@ -186,6 +186,31 @@ export const MAX_GRAPH_GRID_LINES = 100;
 
 /** Maximum manually requested X-axis label ticks per graph. */
 export const MAX_GRAPH_X_AXIS_LABELS = 500;
+
+// ── QR pairing (port 8000 pairing-based instance requests) ─────
+
+/**
+ * Rebuild interval for the image port's pairingId → (widget, slot) index
+ * (`ha/pairingResolver.ts`). Read-path only: a just-saved widget may take
+ * one window to become resolvable. Pairing-ID uniqueness scans never use
+ * this cache.
+ */
+export const PAIRING_RESOLVER_CACHE_TTL_MS = 3_000;
+
+/**
+ * Maximum pairing IDs one `requestedInstances` POST body may carry
+ * (worst case: 6 widgets × primary+fullscreen). Enforced by the Zod body
+ * schema in `ha/imageApp.ts`; larger arrays are a loud 400 — only new
+ * firmware/app code can send them.
+ */
+export const MAX_REQUESTED_INSTANCES = 12;
+
+/**
+ * Cap on cached rendered buffers for pairing-based instance requests
+ * (simple insertion-order eviction in `ha/imageApp.ts`) so hundreds of
+ * paired widgets cannot grow RAM unbounded on a Pi.
+ */
+export const MAX_PAIRING_BUFFER_CACHE = 24;
 
 // ── Widget storage ─────────────────────────────────────────────
 // Bound the number and aggregate size of stored widget documents so an

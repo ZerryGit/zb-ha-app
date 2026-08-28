@@ -1,7 +1,7 @@
 # ZerryBit Engine — Web Builder API Reference
 
 > **Audience:** Frontend/fullstack engineers building or modifying the ZerryBit widget builder.  
-> **Version:** Engine v0.1.4  
+> **Version:** Engine v0.1.5  
 > **Last updated:** 2026-08-12
 
 ---
@@ -13,9 +13,9 @@ The ZerryBit Engine runs as a Home Assistant add-on. The builder SPA is **served
 | Port | Audience | Auth | Purpose |
 |------|----------|------|---------|
 | **8099** | Builder SPA + HA sidebar | HA Ingress session (transparent) | All management APIs, entity data, deploy |
-| **8000** | ESP32 firmware | None (read-only) | Serve cached PNG and BIN images only |
+| **8000** | ESP32 firmware | None (LAN-trust) | Serve PNG and BIN images only — no mutation routes |
 
-The builder **only ever talks to port 8099** via relative URLs. Port 8000 is a read-only static file server for ESP32 devices — the builder never calls it directly.
+The builder **only ever talks to port 8099** via relative URLs; it never calls port 8000 directly. Port 8000 is image-only and unauthenticated: `.png` is GET/HEAD-only, `.bin` is POST-only (the firmware POSTs for its frame). It is not, however, a static file server — a request may drive a fresh render, and the `.bin` body is parsed as an optional render selector (`requestedInstances`) that streams frames rendered from **saved widget documents**, no deploy required. Nothing from the body is persisted and the port has no state-changing routes. See §8 and `DOCS.md`.
 
 ---
 
@@ -109,7 +109,9 @@ GET ../payload
 
 No auth required beyond HA Ingress session. Returns `404` if no payload has been deployed yet.
 
-> **Source secrets are returned verbatim.** Source `auth` secrets (bearer token, `apiKey.value`, basic-auth password) and any credentials placed in custom `headers` / `query` are stored and returned in clear text — they are **not** masked or encrypted. In a multi-user Home Assistant, any user with panel access can read another user's third-party credentials. The same applies to `GET ../api/widgets/:id`.
+> **SOME source secrets are masked on read; all of them are stored in clear text.** `GET ../payload` and `GET ../api/widgets/:id` replace the following with the sentinel `"__stored__"`: the three `auth` fields `bearer`, `apiKey.value` and `basic.password`, plus any `headers` entry whose **name** is `authorization` / `proxy-authorization` / `cookie` or contains `token`, `secret`, `password`, `api-key` or `auth`. Send that sentinel back unchanged on save and the real stored value is preserved; send a new value to replace it.
+>
+> **Not masked:** anything under `query`, and header values whose name falls outside the pattern above. A credential placed there is returned in clear text, so in a multi-user Home Assistant any user with panel access can read it — put credentials in `auth` or a conventionally-named header instead. Everything is written to `/data` unencrypted regardless, so filesystem access reads all of it either way.
 
 ---
 
@@ -184,13 +186,17 @@ The builder persists named widgets (each a document with a `primary` payload and
 |---------------|---------|
 | `GET ../api/widgets` | List widget metadata (`id`, `name`, `updatedAt`, …). |
 | `GET ../api/widgets/new-id` | Returns `{ "id": "<fresh-id>" }` for a new widget. |
-| `GET ../api/widgets/:id` | Read one widget: `{ id, name, doc, metadata?, fullscreen?, updatedAt, schemaVersion }`. `404` `{ error, code: "NOT_FOUND" }` if absent. |
-| `PUT ../api/widgets/:id` | Create/replace a widget. Body: `{ name, doc, metadata?, fullscreen? }`. Omitting `fullscreen` leaves any existing companion unchanged; `null` removes it. Returns `{ ok, id, name, updatedAt }`; `400` on schema violation. |
+| `GET ../api/widgets/:id` | Read one widget: `{ id, name, doc, metadata?, fullscreen?, updatedAt, schemaVersion, pairingId?, fullscreenPairingId? }`. `404` `{ error, code: "NOT_FOUND" }` if absent. |
+| `PUT ../api/widgets/:id` | Create/replace a widget. Body: `{ name, doc, metadata?, fullscreen? }`. Omitting `fullscreen` leaves any existing companion unchanged; `null` removes it. Returns `{ ok, id, name, updatedAt, pairingId?, fullscreenPairingId?, width?, height? }`; `400` on schema violation. |
 | `DELETE ../api/widgets/:id` | Delete a widget. |
 
-> **Source secrets** are stored and returned in clear text over `GET ../api/widgets/:id`, exactly as for `GET ../payload` (see that note above).
+> **Source secrets** are masked to `"__stored__"` over `GET ../api/widgets/:id`, exactly as for `GET ../payload` — including the same limits on *which* fields are covered (see that note above). They are stored unencrypted on disk; only the API response is masked, and only in part.
 
 > **`schemaVersion`** is the stored-envelope format version (currently `1`), owned by the server: it is stamped on every save and returned on read, so `PUT` bodies neither send nor need it. A record saved before envelope versioning existed has no field on disk and reads back as the current version — the file itself is not rewritten. Clients should ignore the field unless they persist widget records themselves.
+
+> **`pairingId` / `fullscreenPairingId`** (additive, optional) are server-owned numeric device-pairing IDs on the widget envelope, used by the QR pairing flow and the port-8000 `requestedInstances` render selector. They are assigned lazily inside the save path — `pairingId` on the widget's first save, `fullscreenPairingId` on the first save that includes a fullscreen payload — unique across all widgets/slots and stable across re-saves. `PUT` bodies never send them (the route whitelists the body; client-sent values are ignored), and the save response echoes the persisted values so the builder can render the pairing QR without a follow-up `GET`. The fullscreen ID is **sticky**: saving `fullscreen: null` keeps it on the envelope so re-creating the companion resumes existing pairings; the builder reports `fs: 0` in the QR while no companion exists. Records saved before the pairing feature simply lack both fields until their next save.
+
+> **`width` / `height`** on the `PUT` response are the pixel size of the payload just persisted — `doc.misc.size` of the **primary** slot, never the companion's. They complete the QR contract's `w`/`h` (see `DOCS.md` → "Widget pairing (QR)"). They are echoed only here: `GET ../api/widgets/:id` already carries the same numbers inside `doc.misc.size`, so duplicating them at the top level of that response would be a second source of truth for one value. Absent only if the stored payload has no readable `misc.size` — impossible for anything this server wrote, since the field is schema-required.
 
 ---
 
@@ -322,6 +328,21 @@ The payload is a JSON object with four top-level keys. Maximum size: **2 MB**.
 ### `sources` — Data fetch instructions
 
 Max **500** sources per payload. Three kinds are supported:
+
+> **`device` is a builder-reserved source id — but the server accepts it
+> forever.** `device` is the panel-telemetry expression namespace (see
+> `DOCS.md`, POST `:8000/image.bin`). It is deliberately NOT a reserved context
+> root: a payload that **declares** a source with `id: "device"` is never
+> seeded with telemetry at all, so that source owns the root, for that widget,
+> on every release. The test is the declaration alone — a `device` source that
+> is disabled or whose fetch fails still shadows the namespace, so the widget
+> renders from its own source (or from nothing) rather than from panel
+> telemetry. The builder blocks *creating* a new source with that id ("device is
+> reserved for panel telemetry"), and that guard is client-side ONLY — the API
+> never rejects the id, no migration exists, and a stored widget already using
+> it keeps loading, rendering and saving unchanged. Third-party clients writing
+> payloads directly may use the id; they simply lose access to telemetry in
+> that widget.
 
 #### `http` source — Public HTTP API
 
@@ -539,7 +560,7 @@ async function deployPayload(payload) {
 
 ## 8. ESP32 Endpoint URLs
 
-**Port 8000 is read-only.** The builder does not call it. These URLs are provided to the user in the HA sidebar so they can configure their ESP32 firmware:
+**Port 8000 is image-only** (`.png` GET/HEAD-only, `.bin` POST-only, no mutation routes). The builder does not call it. These URLs are provided to the user in the HA sidebar so they can configure their ESP32 firmware:
 
 ```
 GET   http://<HA_IP>:8000/image.png    # PNG preview
@@ -547,9 +568,11 @@ POST  http://<HA_IP>:8000/image.bin    # framed 1-bit device reply
 ```
 
 Both endpoints:
-- Return `503` until the first deploy via `PUT ../payload`
+- Return `503` until the first deploy via `PUT ../payload` (the deployed-default frame; paired `requestedInstances` requests render from saved widgets instead and need no deploy)
 - Return `Cache-Control: no-cache` — always serve the latest render
 - No auth required (ESP32 devices cannot handle auth headers)
+
+The `.bin` POST body may carry an optional `{ "requestedInstances": [<pairing IDs>] }` render selector that streams multiple frames in one reply — see `DOCS.md` ("Endpoints" and "Widget pairing (QR)") for the wire format and the QR pairing contract. The builder's top-bar QR button encodes that pairing contract from the envelope's `pairingId`/`fullscreenPairingId` (see the Widget storage API note above).
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "zb-widget-builder",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "author": "ZerryBit",
   "repository": {
@@ -25,6 +25,7 @@
     "konva": "^10.0.12",
     "monaco-editor": "^0.53.0",
     "prop-types": "^15.8.1",
+    "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-konva": "^19.2.1",

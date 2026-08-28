@@ -34,9 +34,17 @@ import { encodePng } from "../encoder/pngEncoder";
 import { encodeBin } from "../encoder/binEncoder";
 import { RENDER_TIMEOUT_MS, MAX_EXPANDED_ELEMENTS } from "../limits";
 import { createHash } from "crypto";
-import type { StorageAdapter, RenderMeta, Slot } from "./adapters";
+import type { StorageAdapter, RenderMeta, Slot, DeviceTelemetryContext } from "./adapters";
+import { ABSENT_DEVICE_CONTEXT } from "./adapters";
 import { stripSourcesSecrets } from "./sourceSecrets";
 import { logInfo } from "./logger";
+
+/**
+ * Context root the `device` telemetry namespace is seeded at (plan 4, D2).
+ * Deliberately NOT a member of `RESERVED_CONTEXT_ROOTS` — see the shadow-rule
+ * comment in `preparePipeline`. Exported so tests can pin the rule by name.
+ */
+export const DEVICE_CONTEXT_ROOT = "device";
 
 // ── Cancellation helpers ───────────────────────────────────────
 
@@ -271,6 +279,7 @@ async function preparePipeline(
   sourceHandler?: SourceHandler | null,
   storage?: AssetReader | null,
   signal?: AbortSignal,
+  device?: DeviceTelemetryContext | null,
 ): Promise<PreparedPipeline> {
   const parseResult = payloadSchema.safeParse(raw);
   if (!parseResult.success) {
@@ -290,6 +299,27 @@ async function preparePipeline(
     };
   }
   ctx.features = resolveFeatures(features);
+
+  // `device` namespace — SHADOW RULE (plan 4, D2). Seeded BEFORE the source
+  // fetch, and ONLY when the payload does not DECLARE its own `device` source:
+  // `device` is deliberately NOT in RESERVED_CONTEXT_ROOTS, so a widget that
+  // already carries that source id owns the root outright.
+  //
+  // Keying off the declaration rather than the assignment is what makes the
+  // shadow unconditional. `fetchAllSources` drops `enabled:false` sources
+  // before its `ctx[source.id] = …` loop, so a disabled `device` source never
+  // lands on top — seeding regardless would hand telemetry to a widget that
+  // declared the root and opted out of fetching it, changing how a stored
+  // widget renders. An enabled source that FAILS still assigns (null), so
+  // only the declaration is a reliable signal.
+  //
+  // That is what makes the rule free of migrations, schemaVersion bumps and
+  // payloadSchema rejections — every widget already stored keeps rendering
+  // exactly as before. Callers that pass nothing get the canonical absent
+  // state, so `device.*` always resolves to a shape rather than undefined.
+  if (!sources.some((s) => s.id === DEVICE_CONTEXT_ROOT)) {
+    ctx.device = device ?? ABSENT_DEVICE_CONTEXT;
+  }
 
   const sourceResult = await fetchAllSources(sources, ctx, sourceHandler, signal);
   throwIfAborted(signal);
@@ -377,12 +407,17 @@ async function preparePipeline(
  *
  * @param raw  The raw (unvalidated) payload JSON
  * @param sourceHandler  Optional platform-specific source handler
+ * @param storage  Optional storage adapter for user-asset reads
+ * @param device  Optional request-scoped device telemetry (plan 4). Omitted
+ *   by every non-wake caller (builder `/render`, deploy, the timer and
+ *   startup warm-up), which therefore render the absent state.
  * @returns Encoded buffers and render metadata
  */
 export async function runPipeline(
   raw: unknown,
   sourceHandler?: SourceHandler | null,
   storage?: AssetReader | null,
+  device?: DeviceTelemetryContext | null,
 ): Promise<{ pngBuffer: Buffer; binBuffer: Buffer; meta: RenderMeta }> {
   // Short-lived render-result cache. The builder fires multiple
   // /render requests for the same payload in normal use:
@@ -399,7 +434,7 @@ export async function runPipeline(
   // invalidates the cache automatically. Cached entries also expire
   // after RENDER_RESULT_CACHE_TTL_MS so stale source fetches don't
   // serve indefinitely.
-  const cached = getCachedRenderResult(raw);
+  const cached = getCachedRenderResult(raw, device);
   if (cached) return cached;
 
   // Per-render abort controller: fired by the timeout below, propagated
@@ -429,7 +464,7 @@ export async function runPipeline(
       sourceErrors,
       userAssetBitmaps,
       userAssetErrors,
-    } = await preparePipeline(raw, sourceHandler, storage, signal);
+    } = await preparePipeline(raw, sourceHandler, storage, signal, device);
     throwIfAborted(signal);
     const { misc, sources, elements } = payload;
 
@@ -568,6 +603,10 @@ export async function runPipeline(
         sourceCount: sources.length,
         elementCount: elements.length,
         renderTimeMs: Date.now() - t0,
+        // D7: did this render actually see telemetry? The D4 cache key
+        // includes the telemetry state, so a cached hit can only come from
+        // a render in the SAME state and re-serving this flag stays honest.
+        deviceTelemetryApplied: device?.present === true,
         sourceErrors,
         renderErrors: [
           ...expandErrors,
@@ -584,7 +623,7 @@ export async function runPipeline(
       },
     };
 
-    putCachedRenderResult(raw, result);
+    putCachedRenderResult(raw, result, device);
     return result;
   } catch (err) {
     // Translate the internal sentinel into the public timeout error.
@@ -621,9 +660,23 @@ interface CachedRenderResult {
 
 const renderResultCache = new Map<string, CachedRenderResult>();
 
-function payloadHashKey(raw: unknown): string | null {
+/**
+ * Cache key = payload hash PLUS the telemetry state (plan 4, D4).
+ *
+ * Telemetry is passed out-of-band, so it is invisible to `JSON.stringify(raw)`
+ * — without this two devices POSTing different battery levels inside the 2 s
+ * window would be served each other's bytes. `buildDeviceContext`'s fixed key
+ * order is what makes the device half canonical without a generic
+ * `canonicalJson` helper, and a caller that passes no device hashes the exact
+ * same string as the precomputed absent state, so a telemetry-less port render
+ * and a builder `/render` of the same payload still share one entry.
+ */
+function payloadHashKey(raw: unknown, device?: DeviceTelemetryContext | null): string | null {
   try {
-    return createHash("sha1").update(JSON.stringify(raw)).digest("hex");
+    const deviceKey = JSON.stringify(device ?? ABSENT_DEVICE_CONTEXT);
+    return createHash("sha1")
+      .update(JSON.stringify(raw) + "\u0000" + deviceKey)
+      .digest("hex");
   } catch {
     // Non-serializable input (cycles, etc.) — skip the cache.
     return null;
@@ -632,8 +685,9 @@ function payloadHashKey(raw: unknown): string | null {
 
 function getCachedRenderResult(
   raw: unknown,
+  device?: DeviceTelemetryContext | null,
 ): { pngBuffer: Buffer; binBuffer: Buffer; meta: RenderMeta } | null {
-  const key = payloadHashKey(raw);
+  const key = payloadHashKey(raw, device);
   if (!key) return null;
   const entry = renderResultCache.get(key);
   if (!entry) return null;
@@ -655,8 +709,9 @@ function getCachedRenderResult(
 function putCachedRenderResult(
   raw: unknown,
   result: { pngBuffer: Buffer; binBuffer: Buffer; meta: RenderMeta },
+  device?: DeviceTelemetryContext | null,
 ): void {
-  const key = payloadHashKey(raw);
+  const key = payloadHashKey(raw, device);
   if (!key) return;
   if (renderResultCache.has(key)) renderResultCache.delete(key);
   renderResultCache.set(key, {

@@ -69,12 +69,12 @@ describe('SetupModeScreen — new-widget flow (not embedded)', () => {
 
     fireEvent.click(appTile());
     expect(appTile().getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByText('coming soon :)')).toBeTruthy();
+    expect(screen.getByText(/Register and sign in to the ZerryBit app/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'OK' }));
     // OK returns to the two tiles — it does NOT jump to the builder.
     expect(onContinue).not.toHaveBeenCalled();
-    expect(screen.queryByText('coming soon :)')).toBeNull();
+    expect(screen.queryByText(/Register and sign in to the ZerryBit app/i)).toBeNull();
     expect(appTile().getAttribute('aria-pressed')).toBe('true');
 
     // The selection persists, so Continue now proceeds.
@@ -118,7 +118,7 @@ describe('SetupModeScreen — embedded (Settings re-open) mode', () => {
     fireEvent.click(screen.getByRole('button', { name: 'OK' }));
 
     expect(onContinue).not.toHaveBeenCalled();
-    expect(screen.queryByText('coming soon :)')).toBeNull();
+    expect(screen.queryByText(/Register and sign in to the ZerryBit app/i)).toBeNull();
     expect(selfHostTile()).toBeTruthy();
   });
 });

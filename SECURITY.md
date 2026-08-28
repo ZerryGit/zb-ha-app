@@ -39,8 +39,14 @@ particular:
 - **Port 8000 (ESP32 endpoint) is unauthenticated by design.** It must stay on a
   trusted LAN and must not be port-forwarded or exposed to the internet.
 - **Source credentials are stored at rest in plaintext** under `/data` so the
-  add-on can replay the fetch at render time. They are masked on the read API
-  but not encrypted on disk; the HA host is the trust boundary.
+  add-on can replay the fetch at render time. The read API masks only *part* of
+  them: the `auth` fields (`bearer`, `apiKey.value`, `basic.password`) and any
+  header whose **name** is `authorization` / `proxy-authorization` / `cookie` or
+  contains `token`, `secret`, `password`, `api-key` or `auth`. A credential
+  placed in a URL query parameter, or in a header with an unrelated name, is
+  returned in clear text, so in a multi-user Home Assistant another panel user
+  can read it — put credentials in `auth` or a conventionally-named header.
+  Nothing is encrypted on disk either way; the HA host is the trust boundary.
 - **Outbound fetches can reach any public host out of the box.** Private and
   reserved IP ranges are blocked (SSRF protection with redirect re-validation)
   unless the operator has explicitly listed them, and an optional
@@ -62,9 +68,9 @@ particular:
 Reports that rely on having root/volume access to the HA host, or on exposing
 the unauthenticated ESP32 port to an untrusted network, fall outside this trust
 model. Reports of issues exploitable **within** the documented model (e.g. a
-panel user reading another user's stored credentials, an SSRF bypass reaching a
-private host not listed in `allow_private_hosts`, a sanitizer bypass, or a
-remote crash/DoS) are in scope and welcome. A defect in the `allow_private_hosts`
-matcher itself — an entry granting more than it names, a never-exemptable range
-becoming reachable, or the exemption leaking to a redirect target or a hostname
-— is an SSRF bypass and is in scope.
+bypass of the read-API credential masking described above, an SSRF bypass
+reaching a private host not listed in `allow_private_hosts`, a sanitizer
+bypass, or a remote crash/DoS) are in scope and welcome. A defect in the
+`allow_private_hosts` matcher itself — an entry granting more than it names, a
+never-exemptable range becoming reachable, or the exemption leaking to a
+redirect target or a hostname — is an SSRF bypass and is in scope.

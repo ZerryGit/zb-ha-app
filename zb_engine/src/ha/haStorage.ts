@@ -298,10 +298,12 @@ export class HaStorageAdapter implements StorageAdapter {
         .map(async (f) => {
           try {
             const raw = await fs.promises.readFile(path.join(WIDGETS_DIR, f), "utf-8");
-            const { id, name, updatedAt } = JSON.parse(raw) as WidgetDoc;
+            const { id, name, updatedAt, pairingId, fullscreenPairingId } = JSON.parse(raw) as WidgetDoc;
             // Report the on-disk byte size so the widget storage quota can
-            // bound aggregate disk use (see core/widgetService.ts).
-            results.push({ id, name, updatedAt, size: Buffer.byteLength(raw, "utf8") });
+            // bound aggregate disk use (see core/widgetService.ts). Pairing
+            // IDs ride along for the uniqueness scan and the image-port
+            // pairing resolver.
+            results.push({ id, name, updatedAt, pairingId, fullscreenPairingId, size: Buffer.byteLength(raw, "utf8") });
           } catch (err) {
             // Skip corrupt/unreadable widget files — do not crash the list
             logWarn("storage.error", { component: "widgets", operation: "read_widget_meta", error: err });

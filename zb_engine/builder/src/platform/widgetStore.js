@@ -63,7 +63,8 @@ async function persistWidgetById(widgetId, widgetName = getWidgetName(widgetId))
   const savePayload = collectWidgetSavePayload(widgetId, widgetName);
   if (!savePayload) throw new Error('No widget document to save.');
 
-  await api.saveWidget(widgetId, savePayload.body);
+  const saveResponse = await api.saveWidget(widgetId, savePayload.body);
+  useWidgetStore.getState().applySavedWidgetInfo(widgetId, saveResponse);
 
   docStore.markClean(widgetId, JSON.stringify(savePayload.runtimeJson));
   if (docStore.docs[savePayload.companionId]) {
@@ -88,6 +89,19 @@ export const useWidgetStore = create((set, get) => ({
   widgets: [],
   activeWidgetId: null,
   activeWidgetName: '',
+  // Server-assigned pairing IDs for the ACTIVE widget (envelope fields,
+  // never part of the doc payload). Null until the widget has been saved
+  // at least once under the pairing feature. `activeFullscreenPairingId`
+  // is sticky server-side: it stays set even while no fullscreen companion
+  // exists — the QR layer reports `fs: 0` based on companion PRESENCE.
+  activePairingId: null,
+  activeFullscreenPairingId: null,
+  // Pixel size of the ACTIVE widget's PRIMARY payload as the server PERSISTED
+  // it — the QR's `w`/`h`. Deliberately not read from the live editor doc: the
+  // QR must advertise the size the device will actually be served, not one the
+  // user is mid-way through changing. Refreshed on load and on every save.
+  activeWidgetWidth: null,
+  activeWidgetHeight: null,
   loading: false,
   saving: false,
   error: null,
@@ -116,6 +130,11 @@ export const useWidgetStore = create((set, get) => ({
 
       const data = await api.loadWidget(id);
       const docStore = useDocStore.getState();
+
+      // Persisted primary size for the QR. Read off the stored payload the GET
+      // already returns — the same authority as the save response's
+      // width/height, so no extra round-trip and no second source of truth.
+      const savedSize = (data.doc ?? data)?.misc?.size;
 
       // Close the previous widget's companion entry (if any) to prevent
       // ghost dirty state from a stale companion lingering in docs[].
@@ -148,11 +167,44 @@ export const useWidgetStore = create((set, get) => ({
       set({
         activeWidgetId: id,
         activeWidgetName: data.name ?? id,
+        activePairingId: data.pairingId ?? null,
+        activeFullscreenPairingId: data.fullscreenPairingId ?? null,
+        activeWidgetWidth: savedSize?.width ?? null,
+        activeWidgetHeight: savedSize?.height ?? null,
         loading: false,
       });
     } catch (err) {
       set({ error: err.message, loading: false });
     }
+  },
+
+  /**
+   * Adopt the QR-relevant facts echoed by a successful widget save: the
+   * pairing IDs and the persisted primary size.
+   * Guarded on the ACTIVE widget so a background auto-save (e.g. a timer
+   * firing for a previously-focused widget) never clobbers what is shown
+   * for the widget the user is looking at. Tolerates an absent response —
+   * the values then simply refresh on the next load — and tolerates a
+   * response from a backend too old to echo the size (see below).
+   */
+  applySavedWidgetInfo(widgetId, saveResponse) {
+    if (!saveResponse || widgetId !== get().activeWidgetId) return;
+    const patch = {
+      activePairingId: saveResponse.pairingId ?? null,
+      activeFullscreenPairingId: saveResponse.fullscreenPairingId ?? null,
+    };
+    // Size is the one field with a SECOND source — openWidget reads it from the
+    // stored doc.misc.size — so a response that omits it carries no
+    // information and must not overwrite what we already know. An older
+    // backend that doesn't echo width/height (e.g. this builder run against a
+    // deployed 0.1.3) would otherwise wipe w/h out of the QR on the first
+    // auto-save. The pairing IDs above are different: the server is their only
+    // source, so absent legitimately means "none yet".
+    if (saveResponse.width != null && saveResponse.height != null) {
+      patch.activeWidgetWidth = saveResponse.width;
+      patch.activeWidgetHeight = saveResponse.height;
+    }
+    set(patch);
   },
 
   /** Save the current editor document back to the server. */
@@ -212,11 +264,17 @@ export const useWidgetStore = create((set, get) => ({
 
       const doc = useDocStore.getState().docs[id]?.doc;
       const runtimeJson = exportRuntimeJson(doc);
-      await api.saveWidget(id, resolvedName, runtimeJson);
+      const saveResponse = await api.saveWidget(id, resolvedName, runtimeJson);
 
       set({
         activeWidgetId: id,
         activeWidgetName: resolvedName,
+        // A brand-new widget gets its pairing ID on this first save; the
+        // fullscreen ID stays null until a companion is saved.
+        activePairingId: saveResponse?.pairingId ?? null,
+        activeFullscreenPairingId: saveResponse?.fullscreenPairingId ?? null,
+        activeWidgetWidth: saveResponse?.width ?? null,
+        activeWidgetHeight: saveResponse?.height ?? null,
         loading: false,
       });
 
@@ -247,7 +305,14 @@ export const useWidgetStore = create((set, get) => ({
       // If the deleted widget was active, clear activeWidgetId so the UI
       // doesn't reference a stale widget while fetchWidgets and openWidget run.
       if (wasActive) {
-        set({ activeWidgetId: null, activeWidgetName: '' });
+        set({
+          activeWidgetId: null,
+          activeWidgetName: '',
+          activePairingId: null,
+          activeFullscreenPairingId: null,
+          activeWidgetWidth: null,
+          activeWidgetHeight: null,
+        });
       }
 
       await get().fetchWidgets();

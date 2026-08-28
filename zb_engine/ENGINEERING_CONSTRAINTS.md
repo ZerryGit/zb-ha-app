@@ -42,7 +42,7 @@ These apply to the HA add-on only, not the cloud-hosted or self-hosted builds.
 
 2. **Don't write to disk blindly.** Compare the new buffer against the existing file before writing (`writeIfChanged`); it's what keeps SD-card wear down. When several widgets auto-save, each write goes through `writeIfChanged` on its own, and a manual save updates that widget's auto-save baseline so it doesn't immediately re-save.
 
-3. **Keep the ports segregated.** Port 8099 (Ingress) serves the authenticated UI. Port 8000 serves read-only images only (`.bin`, `.png`) and stays unauthenticated and GET/HEAD-only.
+3. **Keep the ports segregated.** Port 8099 (Ingress) serves the authenticated UI. Port 8000 serves images only and stays unauthenticated LAN-trust: `.png` is GET/HEAD-only, `.bin` is POST-only (permanent posture — ESP32 firmware POSTs for its frame). The `.bin` body is size-capped and Zod-validated, and carries exactly two things: an **optional render selector** (`requestedInstances` — pairing IDs to stream frames for) and an **optional `telemetry` object**, per-field validated into a request-scoped `device` expression namespace (plan 4). Neither is EVER persisted — telemetry influences only the frames of that one response, there is no per-device store, `mac` is never exposed or used for lookup, and port 8000 still has zero mutation or state-changing routes. An invalid telemetry field nulls itself and never 4xxes a wake. Pairing IDs live on the widget envelope as additive optional fields.
 
 4. **Auth through HA Ingress.** Use HA Ingress session cookies on 8099; the legacy `X-ZB-Token` path is gone.
 
@@ -78,7 +78,7 @@ These apply everywhere unless a line says otherwise.
     - HA Ingress (port 8099) differs: `X-Frame-Options: SAMEORIGIN` so HA can embed the iframe, and the CSP adds `'unsafe-inline'` to `script-src` and `style-src` for the Vite-built React SPA, plus `img-src 'self' data: blob:`, `font-src 'self' data:`, `worker-src 'self' blob:`, and `connect-src 'self'`.
     - Image port (8000) differs too: `Content-Security-Policy: default-src 'none'`, since it loads no resources.
 12. One render at a time, behind the `RenderGuard` mutex — extra requests queue or get rejected.
-13. Image port hardening (HA): port 8000 serves only the read-only image endpoints (`/image.png`, `/image.bin`, `/image_fullscreen.png`, `/image_fullscreen.bin`) — no directory listings, no POST/PUT/DELETE, no leaked error detail, and stale-while-revalidate for concurrent requests.
+13. Image port hardening (HA): port 8000 serves only the image endpoints (`/image.png`, `/image.bin`, `/image_fullscreen.png`, `/image_fullscreen.bin`) — no directory listings, no leaked error detail, and stale-while-revalidate for concurrent requests. `.png` accepts GET/HEAD only; `.bin` accepts POST only, whose body is parsed as the optional Zod-validated `requestedInstances` render selector plus an optional per-field-validated `telemetry` object (request-scoped `device` namespace — never persisted, no other fields read, `wakeReason`/`delta`/`mac` never exposed or logged); no PUT/DELETE, no mutation routes anywhere on the port.
 
 ### Error handling
 

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import Tabs from '../components/Tabs.jsx';
 import { exportRuntimeJson } from '../models/mapper.js';
-import { useDocStore, selectFocusedDoc, selectFocusedDocId, selectFocusedMisc, selectSharedSources, getInheritedPrimarySources } from '../store/docStore.js';
+import { useDocStore, selectFocusedDoc, selectFocusedDocId, selectFocusedMisc, selectSharedSources, getInheritedPrimarySources, declaresTelemetrySourceId } from '../store/docStore.js';
 import { useUiStore } from '../store/uiStore.js';
 import { isFullscreenId } from '../store/companionId.js';
 
@@ -169,6 +169,19 @@ export default function LeftPanel() {
           Array.isArray(parsed.elements) &&
           Array.isArray(parsed.sources)
         ) {
+          // `device` is the panel-telemetry namespace (plan 4, D6). Surfaced
+          // inline rather than through a notice modal: this runs on a debounce
+          // after every pause in typing, and a modal would re-open on each one.
+          // Only an edit that INTRODUCES the id is refused — a widget that
+          // already has a `device` source stays fully editable (shadow rule),
+          // which is why the baseline is the shared pool, not `parsed.sources`.
+          if (
+            declaresTelemetrySourceId(parsed.sources)
+            && !declaresTelemetrySourceId(sharedSources)
+          ) {
+            setError('"device" is reserved for panel telemetry — rename this source.');
+            return;
+          }
           setError(null);
           isSyncingFromJson.current = true;
           replaceDocFromJson(parsed);

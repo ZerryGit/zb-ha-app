@@ -95,11 +95,35 @@ The HA add-on runs two HTTP surfaces:
 - **Ingress app (`8099`)** — authenticated Home Assistant UI/API surface. It
   serves the Builder and handles widget, payload, source-test, render, asset,
   entity, history, and font routes.
-- **Image app (`8000`)** — unauthenticated read-only ESP32/e-ink surface. It
-  serves PNG/BIN image endpoints only, accepts `GET`/`HEAD` only, and has no
-  mutation routes. In the default `on-demand` mode a request may trigger a
-  fresh render subject to the per-slot cooldown and global `RenderGuard`; in
-  `cache-only` mode it only serves the already-warmed in-memory image buffer.
+- **Image app (`8000`)** — unauthenticated image-only ESP32/e-ink surface. It
+  serves the PNG/BIN image endpoints only (`.png` accepts `GET`/`HEAD`, `.bin`
+  accepts `POST` — the firmware POSTs for its frame) and has no mutation
+  routes; the `.bin` body is parsed only as an optional Zod-validated render
+  selector plus an optional per-field-validated `telemetry` object, neither of
+  which is ever persisted. In the default `on-demand` mode a request may
+  trigger a fresh render subject to the per-slot cooldown and global
+  `RenderGuard`; in `cache-only` mode it only serves the already-warmed
+  in-memory image buffer.
+
+Pairing-based instance requests extend the image app without changing that
+trust model: widgets carry server-assigned numeric pairing IDs on their
+envelope (additive optional fields, one per slot), and a `.bin` POST body of
+`{ requestedInstances: [ids] }` streams one framed section per ID in request
+order (u32 ID echo + status byte, then the unchanged frame when available).
+Resolution goes through a `resolvePairing` function injected from `src/ha/`
+(core never imports the HA layer), backed by a short-lived read-path-only
+cache over the widget metadata; instances render sequentially from the SAVED
+widget documents through the same pipeline as deploys, with per-instance
+cooldowns and a size-capped pairing buffer cache. Unresolvable or failing
+instances degrade to a status-0 section instead of failing the response.
+
+Panel telemetry rides the same body and the same single parse: a `telemetry`
+object is validated field by field into a request-scoped `device` expression
+namespace that lives only for the frames of that one response — there is no
+per-device store, and `mac` / `wakeReason` / `delta` are never exposed or
+logged. A widget that **declares** a source with id `device` is not seeded at
+all, so that source owns the root; the namespace shadows on declaration rather
+than through a migration.
 
 Persistent HA runtime state lives under `/data`. The HA storage adapter owns
 payloads, widgets, cached images, uploaded assets, and legacy artifact
@@ -140,8 +164,8 @@ served on parallel ESP32 endpoints.
 |---|---|
 | `PUT /payload?slot=fullscreen` | Stores and renders the companion payload, then writes its cached PNG/BIN artifacts. The body must be a valid payload object; deletion is handled by widget save with `fullscreen: null`. |
 | `POST /render?slot=fullscreen` | Renders the companion payload through the **same `RenderGuard` mutex** as primary — slots never render in parallel. With `X-Deploy: true`, it also persists the slot payload and cached images. Response includes `X-Render-Slot` header. |
-| `GET /image_fullscreen.png` (port 8000) | Read-only PNG endpoint for the companion. Same `If-None-Match` / cooldown / `cache-only` semantics as `/image.png`. |
-| `GET /image_fullscreen.bin` (port 8000) | Read-only binary endpoint for the companion. |
+| `GET /image_fullscreen.png` (port 8000) | Cached PNG for the companion; `GET`/`HEAD` only. Same `If-None-Match` / cooldown / `cache-only` semantics as `/image.png`. |
+| `POST /image_fullscreen.bin` (port 8000) | Framed binary reply for the companion; `POST` only, with the same optional body (render selector + telemetry) as `/image.bin`. |
 
 **Storage layout.** `StorageAdapter` methods accept an optional `slot?: Slot`
 parameter (default `"primary"`):

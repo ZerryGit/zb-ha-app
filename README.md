@@ -1,6 +1,6 @@
 # ZerryBit Engine
 
-**Version 0.1.4 (Beta)** · Home Assistant Add-on for E-ink Displays
+**Version 0.1.5 (Beta)** · Home Assistant Add-on for E-ink Displays
 
 > ⚠️ **Beta software.** ZerryBit Engine — including the Widget Builder — is in **beta**. Expect rough edges, breaking changes between releases, and APIs/payload formats that may change without notice. Not yet recommended for unattended production use. Please [report issues](https://github.com/ZerryGit/zb-ha-app/issues) and back up any widgets you create.
 
@@ -52,11 +52,16 @@ A local-first Home Assistant add-on that renders **1-bit dithered images** from 
 
 ## Endpoints
 
-### Port 8000 — ESP32 (unauthenticated, read-only)
+### Port 8000 — ESP32 (unauthenticated, image-only)
 
 > **LAN trust assumption.** Port 8000 has no authentication — it is intended for
 > ESP32 devices that cannot speak HA's auth protocol. The operator is
-> responsible for keeping it on a trusted LAN. The add-on adds three
+> responsible for keeping it on a trusted LAN. It serves images only and has no
+> mutation routes: `.png` is GET/HEAD-only, `.bin` is POST-only (the firmware
+> POSTs for its frame). The POST body is size-capped and read for exactly two
+> optional things — a render selector naming which paired widgets to send back,
+> and a panel-telemetry object usable in expressions for that one response —
+> neither of which is ever persisted. The add-on adds three
 > safeguards: a configurable per-slot cooldown
 > (`image_port_cooldown_ms`), strong-ETag conditional GETs on the PNG preview
 > (`If-None-Match` → `304`), and an `image_port_mode: cache-only` switch that disables on-demand
@@ -125,18 +130,24 @@ operators should know:
 
 - **Port 8000 is unauthenticated (LAN-trust).** Keep it on a trusted LAN — do
   not port-forward or expose it to the internet. See the
-  [Port 8000](#port-8000--esp32-unauthenticated-read-only) note above and
+  [Port 8000](#port-8000--esp32-unauthenticated-image-only) note above and
   [`DOCS.md`](zb_engine/DOCS.md) for the mitigations (cooldown, conditional GETs,
   `cache-only` mode).
 - **Source credentials are stored at rest in plaintext.** Data-source auth
   (bearer tokens, API keys, basic-auth passwords) is saved inside the widget
   JSON under `/data/widgets/` on the HA volume so the add-on can replay the
   fetch at render time. Anyone with host/volume access can read these. The
-  add-on **masks these secrets** when a widget is read back over the panel API
-  (`GET /api/widgets/:id`, `GET /payload`) and restores them on save, so a
-  panel user cannot read another user's stored credentials — but it does not
-  encrypt them on disk. Treat the HA host as the trust boundary, and prefer
-  scoped/read-only API keys for data sources.
+  add-on **masks some of these secrets** when a widget is read back over the
+  panel API (`GET /api/widgets/:id`, `GET /payload`) and restores them on save:
+  the `auth` fields (bearer token, API-key value, basic-auth password) and any
+  custom header whose *name* looks credential-bearing (`authorization`,
+  `proxy-authorization`, `cookie`, or a name containing `token`, `secret`,
+  `password`, `api-key`, `auth`). **Anything else is returned in clear text** —
+  notably credentials placed in a URL query parameter, or in a header with an
+  unrelated name — so in a multi-user Home Assistant another panel user can
+  read those. Put credentials in `auth` or a conventionally-named header.
+  Nothing is encrypted on disk either way. Treat the HA host as the trust
+  boundary, and prefer scoped/read-only API keys for data sources.
 - **Outbound fetches can reach any public host by default.** Out of the box
   (`allowed_source_domains: []`), the add-on will fetch any public URL you
   configure for data sources, images, and SVGs. Private and reserved IP ranges

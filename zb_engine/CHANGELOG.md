@@ -5,6 +5,43 @@ All notable changes to ZerryBit Engine are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.5
+
+### Added
+
+- **QR pairing.** Every widget now carries a permanent pairing ID and a QR code
+  in the builder's top bar. Scan it with the ZerryBit mobile app and the widget
+  is connected — the app asks port 8000 for that widget's frame by ID, rendered
+  from the saved document, with no deploy step. `POST /image.bin` accepts a
+  `{"requestedInstances":[…]}` body of 1–12 IDs and streams one frame per ID.
+  Firmware that sends no such body gets exactly the same single frame as before.
+- **Device telemetry in expressions.** A device that reports `battery`,
+  `charging`, `units`, `tempC`/`tempF`, `humidity` or
+  `pressureHpa`/`pressureInhg` in its POST body can bind them as `device.*`.
+  Each field is validated on its own — a bad one goes empty instead of failing
+  the wake — and nothing is stored: the values apply to that one response only.
+- **Real setup steps** in the builder's "Using the mobile application" guide,
+  replacing the placeholder.
+
+### Fixed
+
+- **A wake is answered with its own readings, not the previous wake's.**
+  Telemetry that differs from the cached frame's bypasses the render cooldown.
+  Repeat wakes reporting unchanged values still dedupe.
+- **An older backend no longer wipes the pixel size** a widget's pairing QR
+  carries when that widget is saved.
+
+### Known limitations
+
+- **`image_port_mode: cache-only` disables pairing entirely.** The port renders
+  nothing in that mode, so every paired request answers "unavailable" and a
+  paired panel never receives a frame. Pick `on-demand` if you use the app.
+- **A panel reports temperature and pressure in one unit system only.** The
+  other field of each pair stays empty forever, so branch on `device.units`.
+- **Bind telemetry with a `default`.** `{{device.tempC|round}}` renders `0` for
+  a device that has never woken — a plausible, wrong reading.
+  `{"$": "device.battery", "default": "--"}` is the safe form.
+
 ## 0.1.4
 
 ### Added
@@ -107,6 +144,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   device can overflow further than what you saw while designing. Leave slack in
   the Min height if the layout below must never move, or untick "Text overflow"
   to lock the box and cut the text instead.
+- **The updated image library needs an x86-64-v2 CPU.** Bare metal and a
+  Raspberry Pi are fine; an x86 VM set to an older vCPU model (`kvm64`) is not
+  — `sharp` fails to load and nothing renders. Check with
+  `grep -m1 -oE 'cx16|lahf_lm|popcnt|pni|ssse3|sse4_1|sse4_2' /proc/cpuinfo | sort -u`
+  (all seven must appear); fix by setting the VM's CPU type to `host` or
+  `x86-64-v2-AES`.
 
 ## 0.1.3
 

@@ -7,6 +7,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import { useNoticeStore } from '../noticeStore.js';
+
 // ── Mock dependencies before importing docStore ──────────────────────
 
 // displayConfigStore — getDisplayConfig returns an object with helpers.
@@ -984,6 +986,102 @@ describe('docStore', () => {
       // gridSize changed → recompute from the mocked global 800×480:
       // round(2/3*800)=533, round(2/2*480)=480.
       expect(state().docs['w1'].doc.misc.size).toEqual({ width: 533, height: 480 });
+    });
+  });
+  // ── Reserved telemetry source id (plan 4, D6) ──────────────────────
+
+  describe('the `device` source id is reserved builder-side only', () => {
+    beforeEach(() => {
+      useNoticeStore.setState({ notice: null });
+    });
+
+    it('refuses to CREATE a source with id `device` and says why', () => {
+      openWidget('w1');
+      state().switchFocus('w1');
+      state().addSource({ id: 'device', kind: 'http' });
+
+      expect(getDocById('w1').sources).toEqual([]);
+      expect(useNoticeStore.getState().notice?.message).toContain('reserved for panel telemetry');
+    });
+
+    it('still adds every other id normally', () => {
+      openWidget('w1');
+      state().switchFocus('w1');
+      state().addSource({ id: 'devices', kind: 'http' });
+      state().addSource({ id: 'my-device', kind: 'http' });
+
+      expect(getDocById('w1').sources.map((s) => s.id)).toEqual(['devices', 'my-device']);
+      expect(useNoticeStore.getState().notice).toBeNull();
+    });
+
+    it('NEVER touches a widget that already carries a `device` source', () => {
+      // The shadow rule's whole promise: stored widgets keep working. The
+      // server accepts this id forever, so loading, editing and re-reading
+      // one must be completely unaffected by the builder-side guard.
+      openWidget('w1', { sources: [{ id: 'device', kind: 'http', url: 'http://x' }] });
+      state().switchFocus('w1');
+
+      expect(getDocById('w1').sources.map((s) => s.id)).toEqual(['device']);
+
+      state().updateSource('device', { url: 'http://y' });
+      expect(getDocById('w1').sources[0].url).toBe('http://y');
+      expect(useNoticeStore.getState().notice).toBeNull();
+    });
+
+    // The JSON tab is the ONLY surface where a source id is typed by hand —
+    // addSource always receives a generated `id_*` — so this is the path the
+    // guard actually has to cover.
+    it('refuses a JSON edit that INTRODUCES a `device` source', () => {
+      openWidget('w1', { sources: [{ id: 'weather', kind: 'http' }] });
+      state().switchFocus('w1');
+
+      state().replaceDocFromJson({
+        misc: { gridSize: '2x2' },
+        elements: [],
+        features: {},
+        sources: [{ id: 'weather', kind: 'http' }, { id: 'device', kind: 'http' }],
+      });
+
+      // Nothing applied at all — not the source, not the sibling edits.
+      expect(getDocById('w1').sources.map((s) => s.id)).toEqual(['weather']);
+    });
+
+    it('ALLOWS a JSON edit on a widget that already carries a `device` source', () => {
+      // The shadow rule's promise. Refusing here would make an existing
+      // widget uneditable, which is worse than the shadow it is guarding.
+      openWidget('w1', { sources: [{ id: 'device', kind: 'http', url: 'http://x' }] });
+      state().switchFocus('w1');
+
+      state().replaceDocFromJson({
+        misc: { gridSize: '2x2' },
+        elements: [{ id: 'e-new', type: 'rect' }],
+        features: {},
+        sources: [{ id: 'device', kind: 'http', url: 'http://y' }],
+      });
+
+      expect(getDocById('w1').sources.map((s) => s.id)).toEqual(['device']);
+      expect(getDocById('w1').elements).toHaveLength(1);
+    });
+
+    it('ALLOWS a COMPANION JSON edit when the PRIMARY owns the `device` source', () => {
+      // The companion JSON tab renders the MERGED pool, so `imported.sources`
+      // carries the primary's `device` entry even though the companion's own
+      // array is empty. Comparing against the companion would refuse every
+      // such edit; the baseline has to be the primary's shared pool.
+      const cid = fullscreenIdFor('w1');
+      openWidget('w1', { sources: [{ id: 'device', kind: 'http', url: 'http://x' }] });
+      openWidget(cid, { misc: { gridSize: '3x2' } });
+      state().switchFocus(cid);
+
+      state().replaceDocFromJson({
+        misc: { gridSize: '3x2' },
+        elements: [{ id: 'c-el', type: 'text' }],
+        features: {},
+        sources: [{ id: 'device', kind: 'http', url: 'http://x' }],
+      });
+
+      expect(getDocById('w1').sources.map((s) => s.id)).toEqual(['device']);
+      expect(getDocById(cid).elements).toHaveLength(1);
     });
   });
 });
